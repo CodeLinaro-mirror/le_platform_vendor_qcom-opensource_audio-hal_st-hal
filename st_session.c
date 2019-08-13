@@ -65,6 +65,17 @@
 #define IS_SS_DETECTION_SUCCESS(det)\
     !(det & (KEYWORD_DETECTION_REJECT | USER_VERIFICATION_REJECT))
 
+#define IS_KEYWORD_DETECTION_MODEL(sm_id) (sm_id & ST_SM_ID_SVA_KWD)
+
+#define IS_USER_VERIFICATION_MODEL(sm_id) (sm_id & ST_SM_ID_SVA_VOP)
+
+#define IS_SECOND_STAGE_MODEL(sm_id)\
+    ((sm_id & ST_SM_ID_SVA_KWD) || (sm_id & ST_SM_ID_SVA_VOP))
+
+#define IS_MATCHING_SS_MODEL(usecase_sm_id, levels_sm_id)\
+    ((usecase_sm_id & levels_sm_id) ||\
+    ((usecase_sm_id & ST_SM_ID_SVA_RNN) && (levels_sm_id & ST_SM_ID_SVA_CNN)))
+
 #define STATE_TRANSITION(st_session, new_state_fn)\
 do {\
     if (st_session->current_state != new_state_fn) {\
@@ -249,7 +260,6 @@ static inline void alloc_array_ptrs(char ***arr, unsigned int arr_len,
     for (i = 0; i < arr_len; i++)
         ALOGV("%s: string array[%d] %p", __func__, i, (*arr)[i]);
 }
-
 
 static int merge_sound_models(struct sound_trigger_device *stdev,
     unsigned int num_models, listen_model_type *in_models[],
@@ -1207,8 +1217,7 @@ static bool update_hw_config_on_stop(st_proxy_session_t *st_ses,
     int hb_sz = 0, pr_sz = 0;
     bool active = false, enable_lab = false;
 
-    if (!st_ses->vendor_uuid_info->merge_fs_soundmodels ||
-        !st_ses->sm_info.sm_merged) {
+    if (!st_ses->vendor_uuid_info->merge_fs_soundmodels) {
         if (sthw_cfg->conf_levels) {
             ALOGV("%s: free hw conf_levels", __func__);
             free(sthw_cfg->conf_levels);
@@ -2034,16 +2043,16 @@ static int parse_rc_config_key_conf_levels
                         (void *)sm_levels, out_conf_levels, out_num_conf_levels,
                         stc_ses->conf_levels_intf_version);
                 gmm_conf_found = true;
-            } else if ((sm_levels->sm_id == ST_SM_ID_SVA_CNN) ||
-                       (sm_levels->sm_id == ST_SM_ID_SVA_VOP)) {
-                confidence_level = (sm_levels->sm_id == ST_SM_ID_SVA_CNN) ?
+            } else if (IS_SECOND_STAGE_MODEL(sm_levels->sm_id)) {
+                confidence_level = IS_KEYWORD_DETECTION_MODEL(sm_levels->sm_id) ?
                     sm_levels->kw_levels[0].kw_level:
                     sm_levels->kw_levels[0].user_levels[0].level;
                 if (arm_second_stage) {
                     list_for_each(node, &stc_ses->second_stage_list) {
                         st_sec_stage = node_to_item(node, st_arm_second_stage_t,
                             list_node);
-                        if (st_sec_stage->ss_info->sm_id == sm_levels->sm_id)
+                        if (IS_MATCHING_SS_MODEL(st_sec_stage->ss_info->sm_id,
+                                                 sm_levels->sm_id))
                             st_sec_stage->ss_session->confidence_threshold =
                                 confidence_level;
                     }
@@ -2051,7 +2060,8 @@ static int parse_rc_config_key_conf_levels
                     list_for_each(node, &st_hw_ses->lsm_ss_cfg_list) {
                         ss_cfg = node_to_item(node, st_lsm_ss_config_t,
                             list_node);
-                        if (ss_cfg->ss_info->sm_id == sm_levels->sm_id)
+                        if (IS_MATCHING_SS_MODEL(ss_cfg->ss_info->sm_id,
+                                                 sm_levels->sm_id))
                             ss_cfg->confidence_threshold = confidence_level;
                     }
                 }
@@ -2091,18 +2101,17 @@ static int parse_rc_config_key_conf_levels
                         (void *)sm_levels_v2, out_conf_levels,
                         out_num_conf_levels, stc_ses->conf_levels_intf_version);
                 gmm_conf_found = true;
-            } else if ((sm_levels_v2->sm_id == ST_SM_ID_SVA_CNN) ||
-                       (sm_levels_v2->sm_id == ST_SM_ID_SVA_VOP)) {
+            } else if (IS_SECOND_STAGE_MODEL(sm_levels_v2->sm_id)) {
                 confidence_level_v2 =
-                    (sm_levels_v2->sm_id == ST_SM_ID_SVA_CNN) ?
+                    (IS_KEYWORD_DETECTION_MODEL(sm_levels_v2->sm_id)) ?
                     sm_levels_v2->kw_levels[0].kw_level:
                     sm_levels_v2->kw_levels[0].user_levels[0].level;
                 if (arm_second_stage) {
                     list_for_each(node, &stc_ses->second_stage_list) {
                         st_sec_stage = node_to_item(node, st_arm_second_stage_t,
                             list_node);
-                        if (st_sec_stage->ss_info->sm_id ==
-                            sm_levels_v2->sm_id)
+                        if (IS_MATCHING_SS_MODEL(st_sec_stage->ss_info->sm_id,
+                                                 sm_levels_v2->sm_id))
                             st_sec_stage->ss_session->confidence_threshold =
                                 confidence_level_v2;
                     }
@@ -2110,7 +2119,8 @@ static int parse_rc_config_key_conf_levels
                     list_for_each(node, &st_hw_ses->lsm_ss_cfg_list) {
                         ss_cfg = node_to_item(node, st_lsm_ss_config_t,
                             list_node);
-                        if (ss_cfg->ss_info->sm_id == sm_levels_v2->sm_id)
+                        if (IS_MATCHING_SS_MODEL(ss_cfg->ss_info->sm_id,
+                                                 sm_levels_v2->sm_id))
                             ss_cfg->confidence_threshold = confidence_level_v2;
                     }
                 }
@@ -2152,14 +2162,16 @@ static int update_hw_config_on_start(st_session_t *stc_ses,
     int status = 0;
     bool enable_lab = false;
 
-
-    ST_DBG_DECLARE(FILE *rc_opaque_fd = NULL; static int rc_opaque_cnt = 0);
-    ST_DBG_FILE_OPEN_WR(rc_opaque_fd, ST_DEBUG_DUMP_LOCATION,
-                        "rc_config_opaque_data", "bin", rc_opaque_cnt++);
-    ST_DBG_FILE_WRITE(rc_opaque_fd,
-                      (uint8_t *)rc_config + rc_config->data_offset,
-                      rc_config->data_size);
-    ST_DBG_FILE_CLOSE(rc_opaque_fd);
+    if (st_ses->stdev->enable_debug_dumps) {
+        ST_DBG_DECLARE(FILE *rc_opaque_fd = NULL;
+            static int rc_opaque_cnt = 0);
+        ST_DBG_FILE_OPEN_WR(rc_opaque_fd, ST_DEBUG_DUMP_LOCATION,
+            "rc_config_opaque_data", "bin", rc_opaque_cnt++);
+        ST_DBG_FILE_WRITE(rc_opaque_fd,
+            (uint8_t *)rc_config + rc_config->data_offset,
+            rc_config->data_size);
+        ST_DBG_FILE_CLOSE(rc_opaque_fd);
+    }
 
     if (!st_hw_ses) {
         ALOGE("%s: NULL hw session !!!", __func__);
@@ -2344,11 +2356,12 @@ static int update_hw_config_on_start(st_session_t *stc_ses,
          * handle here.
          * For now just copy the the current client data which is same
          * across SVA engines.
+         * Update the custom data for the case in which one client session
+         * does not have custom data and another one does.
          */
-        if (!sthw_cfg->custom_data) {
+        if (rc_config->data_size > sthw_cfg->custom_data_size) {
             sthw_cfg->custom_data = (char *)rc_config + rc_config->data_offset;
-            if (rc_config->data_size)
-                sthw_cfg->custom_data_size =  rc_config->data_size;
+            sthw_cfg->custom_data_size =  rc_config->data_size;
         }
 
     } else {
@@ -2865,9 +2878,9 @@ static int pack_opaque_data_conf_levels(
 
     list_for_each(node, &stc_ses->second_stage_list) {
         st_sec_stage = node_to_item(node, st_arm_second_stage_t, list_node);
-        if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_CNN) {
+        if (IS_KEYWORD_DETECTION_MODEL(st_sec_stage->ss_info->sm_id)) {
             kw_level = st_sec_stage->ss_session->confidence_score;
-        } else if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_VOP) {
+        } else if (IS_USER_VERIFICATION_MODEL(st_sec_stage->ss_info->sm_id)) {
             user_level = st_sec_stage->ss_session->confidence_score;
         }
     }
@@ -2898,9 +2911,9 @@ static int pack_opaque_data_conf_levels(
                                 payload_size, user_id);
                     }
                 }
-            } else if (conf_levels->conf_levels[i].sm_id == ST_SM_ID_SVA_CNN) {
+            } else if (IS_KEYWORD_DETECTION_MODEL(conf_levels->conf_levels[i].sm_id)) {
                 conf_levels->conf_levels[i].kw_levels[0].kw_level = kw_level;
-            } else if (conf_levels->conf_levels[i].sm_id == ST_SM_ID_SVA_VOP) {
+            } else if (IS_USER_VERIFICATION_MODEL(conf_levels->conf_levels[i].sm_id)) {
                 /*
                  * Fill both the keyword and user confidence level with the
                  * confidence score returned from the voiceprint algorithm.
@@ -2938,11 +2951,9 @@ static int pack_opaque_data_conf_levels(
                                 payload_size, user_id);
                     }
                 }
-            } else if (conf_levels_v2->conf_levels[i].sm_id ==
-                       ST_SM_ID_SVA_CNN) {
+            } else if (IS_KEYWORD_DETECTION_MODEL(conf_levels_v2->conf_levels[i].sm_id)) {
                 conf_levels_v2->conf_levels[i].kw_levels[0].kw_level = kw_level;
-            } else if (conf_levels_v2->conf_levels[i].sm_id ==
-                       ST_SM_ID_SVA_VOP) {
+            } else if (IS_USER_VERIFICATION_MODEL(conf_levels_v2->conf_levels[i].sm_id)) {
                 /*
                  * Fill both the keyword and user confidence level with the
                  * confidence score returned from the voiceprint algorithm.
@@ -3003,10 +3014,10 @@ static int pack_recognition_event_conf_levels(
 
     list_for_each(node, &stc_ses->second_stage_list) {
         st_sec_stage = node_to_item(node, st_arm_second_stage_t, list_node);
-        if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_CNN) {
+        if (IS_KEYWORD_DETECTION_MODEL(st_sec_stage->ss_info->sm_id)) {
             local_event->phrase_extras[0].confidence_level =
                 (uint8_t)st_sec_stage->ss_session->confidence_score;
-        } else if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_VOP) {
+        } else if (IS_USER_VERIFICATION_MODEL(st_sec_stage->ss_info->sm_id)) {
             local_event->phrase_extras[0].levels[0].level =
                 (uint8_t)st_sec_stage->ss_session->confidence_score;
         }
@@ -3079,7 +3090,7 @@ static int parse_generic_event_and_pack_opaque_data(
             list_for_each(node, &stc_ses->second_stage_list) {
                 st_sec_stage = node_to_item(node, st_arm_second_stage_t,
                                             list_node);
-                if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_CNN) {
+                if (IS_KEYWORD_DETECTION_MODEL(st_sec_stage->ss_info->sm_id)) {
                     kw_indices->start_index =
                         st_sec_stage->ss_session->kw_start_idx;
                     kw_indices->end_index =
@@ -3204,11 +3215,14 @@ int process_detection_event_keyphrase_v2(
                 goto exit;
             }
 
-            ST_DBG_DECLARE(FILE *opaque_fd = NULL; static int opaque_cnt = 0);
-            ST_DBG_FILE_OPEN_WR(opaque_fd, ST_DEBUG_DUMP_LOCATION,
-                                "detection_opaque_data", "bin", opaque_cnt++);
-            ST_DBG_FILE_WRITE(opaque_fd, opaque_data, opaque_size);
-            ST_DBG_FILE_CLOSE(opaque_fd);
+            if (st_ses->stdev->enable_debug_dumps) {
+                ST_DBG_DECLARE(FILE *opaque_fd = NULL;
+                    static int opaque_cnt = 0);
+                ST_DBG_FILE_OPEN_WR(opaque_fd, ST_DEBUG_DUMP_LOCATION,
+                    "detection_opaque_data", "bin", opaque_cnt++);
+                ST_DBG_FILE_WRITE(opaque_fd, opaque_data, opaque_size);
+                ST_DBG_FILE_CLOSE(opaque_fd);
+            }
         } else {
             status = parse_generic_event_without_opaque_data(st_ses, payload,
                 payload_size, local_event);
@@ -3324,7 +3338,7 @@ static int process_detection_event_keyphrase(
 
         list_for_each(node, &stc_ses->second_stage_list) {
             st_sec_stage = node_to_item(node, st_arm_second_stage_t, list_node);
-            if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_CNN) {
+            if (IS_KEYWORD_DETECTION_MODEL(st_sec_stage->ss_info->sm_id)) {
                 enable_kw_indices = true;
                 opaque_size += sizeof(struct st_param_header) +
                     sizeof(struct st_keyword_indices_info);
@@ -3394,7 +3408,7 @@ static int process_detection_event_keyphrase(
             list_for_each(node, &stc_ses->second_stage_list) {
                 st_sec_stage = node_to_item(node, st_arm_second_stage_t,
                 list_node);
-                if (st_sec_stage->ss_info->sm_id == ST_SM_ID_SVA_CNN) {
+                if (IS_KEYWORD_DETECTION_MODEL(st_sec_stage->ss_info->sm_id)) {
                     kw_indices->start_index =
                         st_sec_stage->ss_session->kw_start_idx;
                     kw_indices->end_index =
@@ -3418,11 +3432,14 @@ static int process_detection_event_keyphrase(
                 st_hw_ses->second_stage_det_event_time;
         opaque_data += sizeof(struct st_timestamp_info);
 
-        ST_DBG_DECLARE(FILE *opaque_fd = NULL; static int opaque_cnt = 0);
-        ST_DBG_FILE_OPEN_WR(opaque_fd, ST_DEBUG_DUMP_LOCATION,
-                            "detection_opaque_data", "bin", opaque_cnt++);
-        ST_DBG_FILE_WRITE(opaque_fd, (opaque_data - opaque_size), opaque_size);
-        ST_DBG_FILE_CLOSE(opaque_fd);
+        if (st_ses->stdev->enable_debug_dumps) {
+            ST_DBG_DECLARE(FILE *opaque_fd = NULL; static int opaque_cnt = 0);
+            ST_DBG_FILE_OPEN_WR(opaque_fd, ST_DEBUG_DUMP_LOCATION,
+                                "detection_opaque_data", "bin", opaque_cnt++);
+            ST_DBG_FILE_WRITE(opaque_fd, (opaque_data - opaque_size),
+                              opaque_size);
+            ST_DBG_FILE_CLOSE(opaque_fd);
+        }
 
     } else {
         if (st_ses->vendor_uuid_info->is_qcva_uuid ||
@@ -3650,6 +3667,7 @@ static void *aggregator_thread_loop(void *st_session)
     struct timespec tspec = {0};
     struct sound_trigger_recognition_event *event = NULL;
     bool capture_requested = false;
+    uint64_t callback_time = 0;
 
     ALOGV("%s: Enter", __func__);
 
@@ -3752,8 +3770,12 @@ static void *aggregator_thread_loop(void *st_session)
                 callback = stc_ses->callback;
                 capture_requested = stc_ses->rc_config->capture_requested;
                 cookie = stc_ses->cookie;
+                callback_time = get_current_time_ns();
                 ALOGD("%s:[c%d] Second stage detected successfully, "
                     "calling client callback", __func__, stc_ses->sm_handle);
+                ALOGD("%s: Total sthal processing time: %llums", __func__,
+                    (callback_time - st_ses->detection_event_time) /
+                    NSECS_PER_MSEC);
                 pthread_mutex_unlock(&st_ses->lock);
                 ATRACE_BEGIN("sthal: client detection callback");
                 callback(event, cookie);
@@ -4504,6 +4526,8 @@ static int active_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
         break;
 
     case ST_SES_EV_DETECTED:
+
+        st_ses->detection_event_time = get_current_time_ns();
         /*
          * Find which client is this detection for.
          * Note that only one keyword detection can happen at a time.
@@ -4582,8 +4606,10 @@ static int active_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
         if (!status && st_ses->lab_enabled) {
             if (stc_ses->rc_config->capture_requested ||
                 !list_empty(&stc_ses->second_stage_list)) {
-                ST_DBG_FILE_OPEN_WR(st_ses->lab_fp, ST_DEBUG_DUMP_LOCATION,
-                    "lab_capture", "bin", file_cnt++);
+                if (st_ses->stdev->enable_debug_dumps) {
+                    ST_DBG_FILE_OPEN_WR(st_ses->lab_fp, ST_DEBUG_DUMP_LOCATION,
+                        "lab_capture", "bin", file_cnt++);
+                }
                 STATE_TRANSITION(st_ses, buffering_state_fn);
                 lab_enabled = true;
             } else {
@@ -5012,8 +5038,10 @@ static int buffering_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
         /* Note: this function may block if there is no PCM data ready*/
         hw_ses->fptrs->read_pcm(hw_ses, ev->payload.readpcm.out_buff,
             ev->payload.readpcm.out_buff_size);
-        ST_DBG_FILE_WRITE(st_ses->lab_fp, ev->payload.readpcm.out_buff,
-            ev->payload.readpcm.out_buff_size);
+        if (st_ses->stdev->enable_debug_dumps) {
+            ST_DBG_FILE_WRITE(st_ses->lab_fp, ev->payload.readpcm.out_buff,
+                ev->payload.readpcm.out_buff_size);
+        }
         break;
     case ST_SES_EV_END_BUFFERING:
         if (stc_ses == st_ses->det_stc_ses) {
@@ -5046,7 +5074,8 @@ static int buffering_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
         hw_ses->fptrs->stop_buffering(hw_ses);
         STATE_TRANSITION(st_ses, active_state_fn);
         DISPATCH_EVENT(st_ses, *ev, status);
-        ST_DBG_FILE_CLOSE(st_ses->lab_fp);
+        if (st_ses->stdev->enable_debug_dumps)
+            ST_DBG_FILE_CLOSE(st_ses->lab_fp);
         break;
 
     case ST_SES_EV_SET_DEVICE:
@@ -5620,9 +5649,9 @@ int st_session_pause(st_session_t *stc_ses)
     st_proxy_session_t *st_ses = stc_ses->hw_proxy_ses;
     st_session_ev_t ev = { .ev_id = ST_SES_EV_PAUSE, .stc_ses = stc_ses };
 
-    pthread_mutex_lock(&stc_ses->lock);
+    pthread_mutex_lock(&st_ses->lock);
     DISPATCH_EVENT(st_ses, ev, status);
-    pthread_mutex_unlock(&stc_ses->lock);
+    pthread_mutex_unlock(&st_ses->lock);
     return status;
 }
 
@@ -6232,7 +6261,7 @@ int st_session_init(st_session_t *stc_ses, struct sound_trigger_device *stdev,
     stc_ses->state = ST_STATE_IDLE;
 
     if (st_ses) { /* Could get freed if other client exists */
-        st_ses ->vendor_uuid_info = v_info;
+        st_ses->vendor_uuid_info = v_info;
         st_ses->exec_mode = exec_mode;
         st_ses->sm_handle = sm_handle;
         st_ses->lab_fp = NULL;

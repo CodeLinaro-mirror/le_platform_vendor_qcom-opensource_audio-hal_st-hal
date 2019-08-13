@@ -101,6 +101,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_CHANNEL_COUNT "channel_count"
 #define ST_PARAM_KEY_IN_CHANNELS "in_channels"
 #define ST_PARAM_KEY_IN_CHANNELS_LPI "in_channels_lpi"
+#define ST_PARAM_KEY_LPI_MODE "lpi_mode"
 #define ST_PARAM_KEY_OUT_CHANNELS "out_channels"
 #define ST_PARAM_KEY_ADM_CFG_PROFILE "adm_cfg_profile"
 #define ST_PARAM_KEY_CAPTURE_DEVICE "capture_device"
@@ -150,6 +151,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_VAD_ENABLE "vad_enable"
 #define ST_PARAM_KEY_DEDICATED_SVA_PATH "dedicated_sva_path"
 #define ST_PARAM_KEY_DEDICATED_HEADSET_PATH "dedicated_headset_path"
+#define ST_PARAM_KEY_ENABLE_DEBUG_DUMPS "enable_debug_dumps"
 #define ST_PARAM_KEY_DAM_TOKEN_ID "dam_token_id"
 
 #ifndef Q6AFE_HWDEP_NODE
@@ -1143,6 +1145,14 @@ static int platform_set_common_config
     if (err >= 0) {
         str_parms_del(parms, ST_PARAM_KEY_DEDICATED_HEADSET_PATH);
         stdev->dedicated_headset_path =
+            !strncasecmp(str_value, "true", 4) ? true : false;
+    }
+
+    err = str_parms_get_str(parms, ST_PARAM_KEY_ENABLE_DEBUG_DUMPS,
+                            str_value, sizeof(str_value));
+    if (err >= 0) {
+        str_parms_del(parms, ST_PARAM_KEY_ENABLE_DEBUG_DUMPS);
+        stdev->enable_debug_dumps =
             !strncasecmp(str_value, "true", 4) ? true : false;
     }
 
@@ -2215,6 +2225,19 @@ static int platform_stdev_set_lsm_params
             if (ret) {
                 goto err_exit;
             }
+        }
+
+        lsm_params->lpi_enable = ST_PLATFORM_LPI_NONE;
+        err = str_parms_get_str(parms, ST_PARAM_KEY_LPI_MODE,
+                                str_value, sizeof(str_value));
+        if (err >= 0) {
+            str_parms_del(parms, ST_PARAM_KEY_LPI_MODE);
+            if (!strncasecmp(str_value, "NON_LPI", sizeof("NON_LPI")))
+                lsm_params->lpi_enable = ST_PLATFORM_LPI_DISABLE;
+            else if (!strncasecmp(str_value, "LPI", sizeof("LPI")))
+                lsm_params->lpi_enable = ST_PLATFORM_LPI_ENABLE;
+            else
+                ALOGE("%s: invalid lpi_mode set: %s", __func__, str_value);
         }
     }
 
@@ -3972,27 +3995,27 @@ static int get_st_device
                 channel_count = my_data->codec_backend_cfg.channel_count;
             }
             if (channel_count == SOUND_TRIGGER_CHANNEL_MODE_OCT) {
-                if (my_data->codec_backend_cfg.lpi_enable)
+                if (my_data->stdev->lpi_enable)
                     st_device = ST_DEVICE_HANDSET_8MIC_LPI;
                 else
                     st_device = ST_DEVICE_HANDSET_8MIC;
             } else if (channel_count == SOUND_TRIGGER_CHANNEL_MODE_HEX) {
-                if (my_data->codec_backend_cfg.lpi_enable)
+                if (my_data->stdev->lpi_enable)
                     st_device = ST_DEVICE_HANDSET_6MIC_LPI;
                 else
                     st_device = ST_DEVICE_HANDSET_6MIC;
             } else if (channel_count == SOUND_TRIGGER_CHANNEL_MODE_QUAD) {
-                if (my_data->codec_backend_cfg.lpi_enable)
+                if (my_data->stdev->lpi_enable)
                     st_device = ST_DEVICE_HANDSET_QMIC_LPI;
                 else
                     st_device = ST_DEVICE_HANDSET_QMIC;
             } else if (channel_count == SOUND_TRIGGER_CHANNEL_MODE_TRI) {
-                if (my_data->codec_backend_cfg.lpi_enable)
+                if (my_data->stdev->lpi_enable)
                     st_device = ST_DEVICE_HANDSET_TMIC_LPI;
                 else
                     st_device = ST_DEVICE_HANDSET_TMIC;
             } else if (channel_count == SOUND_TRIGGER_CHANNEL_MODE_STEREO) {
-                if (my_data->codec_backend_cfg.lpi_enable)
+                if (my_data->stdev->lpi_enable)
                     st_device = ST_DEVICE_HANDSET_DMIC_LPI;
                 else
                     st_device = ST_DEVICE_HANDSET_DMIC;
@@ -4973,7 +4996,8 @@ void platform_get_lsm_usecase
    void* platform,
    struct st_vendor_info* v_info,
    struct st_lsm_params** lsm_usecase,
-   st_exec_mode_t exec_mode
+   st_exec_mode_t exec_mode,
+   bool lpi_enable
 )
 {
     struct st_lsm_params *usecase = NULL;
@@ -4999,7 +5023,12 @@ void platform_get_lsm_usecase
         usecase = node_to_item(lsm_node, struct st_lsm_params, list_node);
         if (usecase->exec_mode == exec_mode) {
             if (my_data->xml_version >= PLATFORM_XML_VERSION_0x0105) {
-                if (capture_device == usecase->capture_device) {
+                if (capture_device == usecase->capture_device &&
+                    (usecase->lpi_enable == ST_PLATFORM_LPI_NONE ||
+                     (lpi_enable && usecase->lpi_enable ==
+                      ST_PLATFORM_LPI_ENABLE) ||
+                     (!lpi_enable && usecase->lpi_enable ==
+                      ST_PLATFORM_LPI_DISABLE))) {
                     *lsm_usecase = usecase;
                     v_info->in_channels = usecase->in_channels;
                     v_info->fluence_type = usecase->fluence_type;
