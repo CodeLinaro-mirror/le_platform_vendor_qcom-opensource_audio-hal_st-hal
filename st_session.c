@@ -2453,10 +2453,14 @@ static int start_hw_session(st_proxy_session_t *st_ses, st_hw_session_t *hw_ses,
      * It is possible the BE LPI mode has been updated, but not the FE mode.
      * DSP requires both FE and BE to be in the same mode for any configuration
      * changes between LPI and non-LPI switch, so update the FE mode to the
-     * same as BE mode by re-opening LSM session.
+     * same as BE mode by re-opening LSM session. This is also used for
+     * other transition usecases which require dereg_sm and reg_sm.
      */
-    if (hw_ses->lpi_enable != hw_ses->stdev->lpi_enable) {
+    if (hw_ses->lpi_enable != hw_ses->stdev->lpi_enable ||
+        (hw_ses->barge_in_mode != hw_ses->stdev->barge_in_mode &&
+         !hw_ses->stdev->support_dynamic_ec_update)) {
         hw_ses->lpi_enable = hw_ses->stdev->lpi_enable;
+        hw_ses->barge_in_mode = hw_ses->stdev->barge_in_mode;
         if (!load_sm) {
             load_sm = true;
             status = hw_ses->fptrs->dereg_sm(hw_ses);
@@ -3767,6 +3771,7 @@ static void *aggregator_thread_loop(void *st_session)
                     }
                     goto exit;
                 }
+                stc_ses->detection_sent = true;
                 callback = stc_ses->callback;
                 capture_requested = stc_ses->rc_config->capture_requested;
                 cookie = stc_ses->cookie;
@@ -4188,8 +4193,35 @@ static int loaded_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
 
     case ST_SES_EV_RESUME:
         stc_ses->paused = false;
-        if (!is_any_client_in_state(st_ses, ST_STATE_ACTIVE))
+        if (!is_any_client_in_state(st_ses, ST_STATE_ACTIVE)) {
+            /*
+             * When a transition is needed due to lpi mode or barge-in mode,
+             * call dereg_sm and reg_sm to select the updated lsm_usecase.
+             */
+            if (hw_ses->lpi_enable != hw_ses->stdev->lpi_enable ||
+                (hw_ses->barge_in_mode != hw_ses->stdev->barge_in_mode &&
+                 !hw_ses->stdev->support_dynamic_ec_update)) {
+
+                hw_ses->lpi_enable = hw_ses->stdev->lpi_enable;
+                hw_ses->barge_in_mode = hw_ses->stdev->barge_in_mode;
+
+                status = hw_ses->fptrs->dereg_sm(hw_ses);
+                if (status) {
+                    ALOGE("%s:[%d] failed to dereg_sm err %d", __func__,
+                        st_ses->sm_handle, status);
+                    break;
+                }
+
+                status = hw_ses->fptrs->reg_sm(hw_ses, st_ses->sm_info.sm_data,
+                    st_ses->sm_info.sm_size, st_ses->sm_info.sm_type);
+                if (status) {
+                    ALOGE("%s:[%d] failed to reg_sm err %d", __func__,
+                        st_ses->sm_handle, status);
+                    STATE_TRANSITION(st_ses, idle_state_fn);
+                }
+            }
             break;
+        }
         /* Fall through */
     case ST_SES_EV_START:
     case ST_SES_EV_RESTART:
@@ -4550,6 +4582,7 @@ static int active_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
         }
         st_ses->det_stc_ses = stc_ses;
         st_ses->hw_ses_current->enable_second_stage = false; /* Initialize */
+        stc_ses->detection_sent = false;
 
         if (list_empty(&stc_ses->second_stage_list) ||
             st_ses->detection_requested) {
@@ -4644,6 +4677,7 @@ static int active_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
          * second stage successfully detects.
          */
         if (!enable_second_stage) {
+            stc_ses->detection_sent = true;
             callback = stc_ses->callback;
             cookie = stc_ses->cookie;
             ALOGD("%s:[c%d] invoking the client callback",
@@ -4683,21 +4717,25 @@ static int active_state_fn(st_proxy_session_t *st_ses, st_session_ev_t *ev)
          do {
              status = pthread_mutex_trylock(&st_ses->lock);
          } while (status && ((st_ses->current_state == detected_state_fn) ||
-                  (st_ses->current_state == buffering_state_fn)));
+                  (st_ses->current_state == buffering_state_fn)) &&
+                  !st_ses->stdev->ssr_offline_received);
 
         if (st_ses->current_state != detected_state_fn) {
             ALOGV("%s:[%d] client not in detected state, lock status %d",
                 __func__, st_ses->sm_handle, status);
             if (!status) {
                 /*
-                 * Stop session if still in buffering state and no pending
-                 * stop to be handled i.e. internally buffering was stopped.
-                 * This is required to avoid further detections in wrong state.
-                 * Client is expected to issue start recognition for current
-                 * detection event which will restart the session.
+                 * If detection is sent to client while in buffering state,
+                 * and if internal buffering is stopped due to errors, stop
+                 * session internally as client is expected to restart the
+                 * detection if required.
+                 * Note: It is possible that detection event is not sent to
+                 * client if second stage is not yet detected during internal
+                 * buffering stop, in which case restart is posted from second
+                 * stage thread for further detections.
                  */
                 if ((st_ses->current_state == buffering_state_fn) &&
-                    !stc_ses->pending_stop) {
+                    !stc_ses->pending_stop && stc_ses->detection_sent) {
                     ALOGD("%s:[%d] buffering stopped internally, post c%d stop",
                         __func__, st_ses->sm_handle,
                         st_ses->det_stc_ses->sm_handle);
