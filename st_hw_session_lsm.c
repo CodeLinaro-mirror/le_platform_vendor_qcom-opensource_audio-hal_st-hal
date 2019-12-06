@@ -611,7 +611,7 @@ static void ape_enable_use_case(bool enable, st_hw_session_t *p_ses)
                 p_ses->stdev->ape_pcm_use_cases[p_ses->use_case_idx].use_case,
                 USECASE_STRING_SIZE);
         platform_stdev_check_and_append_usecase(p_ses->stdev->platform,
-                                               use_case, profile_type);
+                                                use_case);
         ALOGD("%s: enable use case = %s", __func__, use_case);
         platform_stdev_send_stream_app_type_cfg(p_ses->stdev->platform,
                                    p_lsm_ses->pcm_id, p_ses->st_device,
@@ -648,7 +648,6 @@ static int ape_enable_port_control(bool enable, st_hw_session_t *p_ses)
 {
     int ret = 0;
     char port_ctrl[USECASE_STRING_SIZE] = {0};
-    st_profile_type_t profile_type = get_profile_type(p_ses);
     st_hw_session_lsm_t *p_lsm_ses = (st_hw_session_lsm_t *)p_ses;
 
     if (enable) {
@@ -656,7 +655,7 @@ static int ape_enable_port_control(bool enable, st_hw_session_t *p_ses)
                 p_ses->stdev->ape_pcm_use_cases[p_ses->use_case_idx].use_case,
                 USECASE_STRING_SIZE);
         platform_stdev_check_and_append_usecase(p_ses->stdev->platform,
-                                                port_ctrl, profile_type);
+                                                port_ctrl);
         strlcat(port_ctrl, " port", USECASE_STRING_SIZE);
 
         ALOGV("%s: enable = %s", __func__, port_ctrl);
@@ -1552,7 +1551,7 @@ void process_raw_lab_data_ape(st_hw_session_lsm_t *p_lsm_ses)
                 __func__, ftrt_bytes_written_ms, ((frame_send_time -
                     buffering_start_time) / NSECS_PER_MSEC));
 
-            if (!p_lsm_ses->common.is_generic_event) {
+            if (p_lsm_ses->common.enable_second_stage && !p_lsm_ses->common.is_generic_event) {
                 ALOGD("%s: First real time frame took %llums", __func__,
                     (frame_read_time / NSECS_PER_MSEC));
                 adjust_ss_buff_end(&p_lsm_ses->common, cnn_append_bytes,
@@ -1951,7 +1950,7 @@ static int sound_trigger_set_device
 )
 {
     char st_device_name[DEVICE_NAME_MAX_SIZE] = { 0 };
-    int ref_cnt_idx = 0, ref_cnt = 0;
+    int ref_cnt_idx = 0, ref_cnt = 0, ref_enable_idx = 0;
     int status = 0;
     st_device_t st_device = 0;
     audio_devices_t capture_device = 0;
@@ -1994,6 +1993,8 @@ static int sound_trigger_set_device
 
         pthread_mutex_lock(&p_ses->stdev->ref_cnt_lock);
         ref_cnt_idx = (p_ses->exec_mode * ST_DEVICE_MAX) + st_device;
+        ref_enable_idx = (p_ses->exec_mode * ST_DEVICE_MAX) +
+            platform_get_lpi_st_device(st_device);
         ref_cnt = ++(p_ses->stdev->dev_ref_cnt[ref_cnt_idx]);
         app_type = platform_stdev_get_device_app_type(p_ses->stdev->platform,
                                                       profile_type);
@@ -2025,15 +2026,23 @@ static int sound_trigger_set_device
                            __func__, p_ses->st_device, p_ses->st_device_name);
                     audio_route_reset_and_update_path(p_ses->stdev->audio_route,
                         st_device_name);
+                    if (0 < p_ses->stdev->dev_enable_cnt[ref_enable_idx])
+                        --(p_ses->stdev->dev_enable_cnt[ref_enable_idx]);
                 }
 
-                ALOGD("%s: enable device (%x) = %s", __func__, st_device,
-                      st_device_name);
-                ATRACE_BEGIN("sthal:lsm: audio_route_apply_and_update_path");
-                audio_route_apply_and_update_path(p_ses->stdev->audio_route,
-                                                  st_device_name);
-                ATRACE_END();
-                update_hw_mad_exec_mode(p_ses->exec_mode, profile_type);
+                if (0 == p_ses->stdev->dev_enable_cnt[ref_enable_idx]) {
+                    ALOGD("%s: enable device (%x) = %s", __func__, st_device,
+                          st_device_name);
+                    ATRACE_BEGIN("sthal:lsm: audio_route_apply_and_update_path");
+                    audio_route_apply_and_update_path(p_ses->stdev->audio_route,
+                                                      st_device_name);
+                    ATRACE_END();
+                    update_hw_mad_exec_mode(p_ses->exec_mode, profile_type);
+                    ++(p_ses->stdev->dev_enable_cnt[ref_enable_idx]);
+                } else {
+                    ALOGD("%s: Device already enabled, no not re-enable",
+                        __func__);
+                }
             }
         } else {
             --(p_ses->stdev->dev_ref_cnt[ref_cnt_idx]);
@@ -2049,6 +2058,8 @@ static int sound_trigger_set_device
         }
 
         ref_cnt_idx = (p_ses->exec_mode * ST_DEVICE_MAX) + p_ses->st_device;
+        ref_enable_idx = (p_ses->exec_mode * ST_DEVICE_MAX) +
+            platform_get_lpi_st_device(p_ses->st_device);
         pthread_mutex_lock(&p_ses->stdev->ref_cnt_lock);
         ref_cnt = p_ses->stdev->dev_ref_cnt[ref_cnt_idx];
         if (0 < ref_cnt) {
@@ -2068,6 +2079,8 @@ static int sound_trigger_set_device
                                                   p_ses->st_device_name);
                 ATRACE_END();
                 update_hw_mad_exec_mode(ST_EXEC_MODE_NONE, profile_type);
+                if (0 < p_ses->stdev->dev_enable_cnt[ref_enable_idx])
+                    --(p_ses->stdev->dev_enable_cnt[ref_enable_idx]);
             } else {
                 ALOGD("%s: Non-hwmad device, concurrent capture on, do not disable", __func__);
             }
@@ -2525,8 +2538,8 @@ static int ape_reg_sm_params(st_hw_session_t* p_ses,
         ALOGE("%s: Unknown recognition mode %d", __func__, recognition_mode);
         goto error_exit_1;
     }
-    ALOGV("%s: st recogntion_mode %d, dsp det_mode %d", __func__,
-          recognition_mode, det_mode.mode);
+    ALOGD("%s: st_recogntion_mode %d, det_mode %d, lab %d", __func__,
+          recognition_mode, det_mode.mode, capture_requested);
 
     stage_idx = LSM_STAGE_INDEX_FIRST;
     param_count = 0;

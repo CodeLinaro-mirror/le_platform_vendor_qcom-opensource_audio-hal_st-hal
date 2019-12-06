@@ -657,8 +657,7 @@ bool platform_stdev_check_backends_match
 void platform_stdev_check_and_append_usecase
 (
    void *platform,
-   char *use_case,
-   st_profile_type_t profile_type
+   char *use_case
 );
 
 void platform_stdev_check_and_update_ec_ref_config
@@ -669,6 +668,8 @@ void platform_stdev_check_and_update_ec_ref_config
 );
 
 bool platform_get_lpi_mode(void *my_data);
+
+int platform_get_lpi_st_device(int st_device);
 
 void platform_stdev_reset_backend_cfg(void *platform);
 
