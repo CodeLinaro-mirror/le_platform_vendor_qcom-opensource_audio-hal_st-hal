@@ -3315,7 +3315,7 @@ static int platform_stdev_get_device_sample_rate
     struct listnode *p_node, *temp_node;
     struct adm_cfg_info *cfg_info;;
     /* default device sampling rate in acdb */
-    int sample_rate = SOUND_TRIGGER_SAMPLING_RATE_48000;
+    int sample_rate = SOUND_TRIGGER_SAMPLING_RATE_16000;
 
     list_for_each_safe(p_node, temp_node, &stdev->adm_cfg_list) {
         cfg_info = node_to_item(p_node, struct adm_cfg_info, list_node);
@@ -4197,6 +4197,30 @@ bool platform_get_lpi_mode(void *platform)
     struct platform_data *my_data = (struct platform_data *) platform;
 
     return my_data->codec_backend_cfg.lpi_enable;
+}
+
+int platform_get_lpi_st_device(int st_device)
+{
+    int lpi_device = st_device;
+
+    switch (st_device) {
+    case ST_DEVICE_HANDSET_DMIC:
+        lpi_device = ST_DEVICE_HANDSET_DMIC_LPI;
+        break;
+    case ST_DEVICE_HANDSET_TMIC:
+        lpi_device = ST_DEVICE_HANDSET_TMIC_LPI;
+        break;
+    case ST_DEVICE_HANDSET_QMIC:
+        lpi_device = ST_DEVICE_HANDSET_QMIC_LPI;
+        break;
+    case ST_DEVICE_HEADSET_MIC:
+        lpi_device = ST_DEVICE_HEADSET_MIC_LPI;
+        break;
+    default:
+        ALOGV("%s: No need to convert device %d", __func__, st_device);
+    }
+
+    return lpi_device;
 }
 
 #ifdef SNDRV_IOCTL_HWDEP_VAD_CAL_TYPE
