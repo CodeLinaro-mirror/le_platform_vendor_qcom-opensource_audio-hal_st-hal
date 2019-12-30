@@ -63,7 +63,12 @@ struct sound_trigger_device;
 #define MIXER_PATH_FILE_NAME_WCD9340 "/vendor/etc/sound_trigger_mixer_paths_wcd9340"
 #define MIXER_PATH_FILE_NAME_BG "/vendor/etc/sound_trigger_mixer_paths_bg"
 
+#ifdef DAEMON_SUPPORT_AUTO
+#define LIB_ACDB_LOADER "libacdbloaderclient.so"
+#else
 #define LIB_ACDB_LOADER "libacdbloader.so"
+#endif
+
 #define LIB_ADPCM_DECODER "libadpcmdec.so"
 #define LIB_MULAW_DECODER "libmulawdec.so"
 #define LIB_SVA_SOUNDMODEL "liblistensoundmodel2.so"
