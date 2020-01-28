@@ -3,7 +3,7 @@
  * This file contains the API to load sound models with
  * DSP and start/stop detection of associated key phrases.
  *
- * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -266,6 +266,7 @@ struct sound_trigger_device {
     bool support_dynamic_ec_update;
     bool screen_off;
     bool barge_in_mode;
+    int ec_reset_pending_cnt;
 };
 
 typedef struct sound_trigger_device sound_trigger_device_t;
