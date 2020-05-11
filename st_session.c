@@ -53,7 +53,11 @@
 #include "st_second_stage.h"
 
 #ifdef LINUX_ENABLED
+#ifdef ST_DEFERRED_STOP_ENABLED
+#define ST_SES_DEFERRED_STOP_DELAY_MS 1000
+#else
 #define ST_SES_DEFERRED_STOP_DELAY_MS 0
+#endif
 #define ST_SES_DEFERRED_STOP_SS_DELAY_MS 0
 #else
 #define ST_SES_DEFERRED_STOP_DELAY_MS 1000
@@ -2740,13 +2744,17 @@ static int get_first_stage_detection_params(st_proxy_session_t *st_ses,
                     GENERIC_DET_EVENT_KW_END_OFFSET);
                 break;
 
+            case KEY_ID_KEYWORD_CHANNEL_INDEX:
+                hw_ses->channel_idx = *((uint32_t *)payload_ptr +
+                    GENERIC_DET_EVENT_CHANNEL_IDX_OFFSET);
+                break;
             default:
                 ALOGW("%s: Unsupported generic detection event key id",
                     __func__);
                 break;
             }
             count_size += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
-            payload_ptr += count_size;
+            payload_ptr += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
         }
     } else {
         /*
@@ -2782,9 +2790,9 @@ static int get_first_stage_detection_params(st_proxy_session_t *st_ses,
 
     kw_start_ms = convert_bytes_to_ms(hw_ses->kw_start_idx, &hw_ses->config);
     kw_end_ms = convert_bytes_to_ms(hw_ses->kw_end_idx, &hw_ses->config);
-    ALOGD("%s:[%d] 1st stage kw_start = %dms, kw_end = %dms,"
-          "is_generic_event %d", __func__, st_ses->sm_handle,
-          kw_start_ms, kw_end_ms, hw_ses->is_generic_event);
+    ALOGD("%s:[%d] 1st stage kw_start = %dms, kw_end = %dms, is_generic_event %d, channel_idx %d",
+        __func__, st_ses->sm_handle, kw_start_ms, kw_end_ms,
+        hw_ses->is_generic_event, hw_ses->channel_idx);
 
     return 0;
 }
@@ -2908,14 +2916,21 @@ static size_t set_opaque_data_size(char *payload, size_t payload_size,
                     sizeof(struct st_confidence_levels_info_v2);
             }
             count_size += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
-            payload += count_size;
+            payload += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
             break;
 
         case KEY_ID_KEYWORD_POSITION_STATS:
             opaque_size += sizeof(struct st_param_header) +
                 sizeof(struct st_keyword_indices_info);
             count_size += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
-            payload += count_size;
+            payload += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
+            break;
+
+        case KEY_ID_KEYWORD_CHANNEL_INDEX:
+            opaque_size += sizeof(struct st_param_header) +
+                sizeof(struct st_channel_index_info);
+            count_size += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
+            payload += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
             break;
 
         default:
@@ -3104,6 +3119,7 @@ static int parse_generic_event_and_pack_opaque_data(
     uint32_t key_id = 0, key_payload_size = 0;
     struct st_param_header *param_hdr = NULL;
     struct st_keyword_indices_info *kw_indices = NULL;
+    struct st_channel_index_info *chan_info = NULL;
     struct st_timestamp_info *timestamps = NULL;
     size_t count_size = 0;
     st_arm_second_stage_t *st_sec_stage = NULL;
@@ -3171,13 +3187,25 @@ static int parse_generic_event_and_pack_opaque_data(
             opaque_data += sizeof(struct st_keyword_indices_info);
             break;
 
+        case KEY_ID_KEYWORD_CHANNEL_INDEX:
+            /* Pack the opaque data keyword indices structure */
+            param_hdr = (struct st_param_header *)(*opaque_data);
+            param_hdr->key_id = ST_PARAM_KEY_CHANNEL_INDEX;
+            param_hdr->payload_size = sizeof(struct st_channel_index_info);
+            *opaque_data += sizeof(struct st_param_header);
+            chan_info = (struct st_channel_index_info *)(*opaque_data);
+            chan_info->version = 0x1;
+            chan_info->channel_index = *((uint32_t *)payload + 3);
+            *opaque_data += param_hdr->payload_size;
+            break;
+
         default:
             ALOGE("%s: Unsupported generic detection event key id", __func__);
             status = -EINVAL;
             goto exit;
         }
         count_size += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
-        payload += count_size;
+        payload += GENERIC_DET_EVENT_HEADER_SIZE + key_payload_size;
     }
 
     /* Pack the opaque data detection timestamp structure */

@@ -2588,7 +2588,7 @@ static int stdev_close(hw_device_t *device)
 
     pthread_mutex_lock(&stdev->lock);
     sthw_extn_lpma_deinit();
-    platform_stdev_deinit(stdev->platform);
+
     free(stdev->arm_pcm_use_cases);
     if (!stdev->is_gcs)
         free(stdev->cpe_pcm_use_cases);
@@ -2608,6 +2608,7 @@ static int stdev_close(hw_device_t *device)
         free(st_session);
     }
 
+    platform_stdev_deinit(stdev->platform);
     pthread_mutex_unlock(&stdev->lock);
     hw_session_notifier_deinit();
 

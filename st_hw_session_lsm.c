@@ -554,8 +554,9 @@ static bool fill_lsm_det_event_type_params
 {
     /* fill event type params */
     det_event_type->event_type = LSM_DET_EVENT_TYPE_GENERIC;
-    /* request for confidence level and timestamp */
-    det_event_type->mode = ACD_CONFIDENCE_LEVELS_BIT | ACD_TIME_STAMP_INFO_BIT;
+    /* request for confidence level, timestamp and channel index */
+    det_event_type->mode = ACD_CONFIDENCE_LEVELS_BIT | ACD_TIME_STAMP_INFO_BIT |
+                           ACD_CHANNEL_INDEX_INFO_BIT;
 
     det_event_type_params->param_size = sizeof(*det_event_type);
     det_event_type_params->param_data = (unsigned char *)det_event_type;
@@ -1591,6 +1592,7 @@ static void *callback_thread_loop(void *context)
                                  (st_hw_session_lsm_t *)context;
     st_lsm_event_status_t *params;
     char *st_lsm_event_cmd = NULL;
+    st_session_t *lsm_ses = NULL;
     unsigned int payload_alloc_size = SOUND_TRIGGER_MAX_EVNT_PAYLOAD_SIZE;
     int status = 0;
     int event_status, request;
@@ -1655,6 +1657,13 @@ static void *callback_thread_loop(void *context)
         case LSM_VOICE_WAKEUP_STATUS_RUNNING:
             continue;
         case LSM_VOICE_WAKEUP_STATUS_DETECTED:
+            /* Check if IMC freeze event needs to be sent */
+            lsm_ses = get_sound_trigger_session(p_lsm_ses->common.stdev, p_lsm_ses->common.sm_handle);
+            if (lsm_ses->hw_proxy_ses->rc_config->capture_requested) {
+                platform_stdev_send_ffecns_freeze_event(p_lsm_ses->common.stdev->platform,
+                    get_profile_type(&p_lsm_ses->common), true /* freeze */);
+            }
+
             /*
              * Currently, DSP does not support the inclusion of detection
              * timestamp within the payload. So the timestamp is filled here
@@ -3044,6 +3053,10 @@ static int ape_stop_buffering(st_hw_session_t* p_ses)
         if (status) ALOGE("%s: ERROR. SNDRV_PCM_IOCTL_RESET failed status %d", __func__,
                status);
     }
+
+    /* Check if IMC unfreeze event needs to be sent */
+    platform_stdev_send_ffecns_freeze_event(p_ses->stdev->platform,
+        get_profile_type(p_ses), false /* unfreeze */);
 
     ALOGD("%s:[%d] Exit, status=%d", __func__, p_ses->sm_handle, status);
     return status;

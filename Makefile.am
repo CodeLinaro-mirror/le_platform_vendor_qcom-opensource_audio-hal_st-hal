@@ -31,6 +31,11 @@ c_sources += st_extn/st_hw_extn.c
 AM_CFLAGS += -DST_EXTN_ENABLED
 endif
 
+if SOUND_TRIGGER_TRANSITION
+c_sources += sound_trigger_transition.c
+AM_CFLAGS += -DST_TRANSITION_ENABLED
+endif
+
 if USE_KEEP_ALIVE
 AM_CFLAGS += -DUSE_KEEP_ALIVE
 endif

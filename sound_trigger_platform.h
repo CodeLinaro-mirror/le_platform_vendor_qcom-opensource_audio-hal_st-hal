@@ -1,6 +1,6 @@
 /* sound_trigger_platform.h
  *
- * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -41,6 +41,15 @@
 struct sound_trigger_device;
 
 #define PCM_DEVICE_FILE "/proc/asound/pcm"
+#define LIB_ALM "libalm.so"
+
+/* AI-based feature license IDs for far-field EC/NS
+ * and keyword detection for QCS40X.
+ */
+#define FFV_6MIC_FEATUREID              900
+#define FFV_4MIC_FEATUREID              901
+#define FFV_3MIC_FEATUREID              902
+#define FFV_2MIC_FEATUREID              903
 
 #define MIXER_PATH_MAX_LENGTH 100
 #define MIXER_FILE_EXT ".xml"
@@ -728,5 +737,13 @@ int platform_stdev_derive_mixer_ctl_from_backend
     void *platform,
     char *mixer_ctl_name
 );
+
+void platform_stdev_send_ffecns_freeze_event
+(
+    void *platform,
+    st_profile_type_t profile_type,
+    bool freeze
+);
+
 
 #endif /* SOUND_TRIGGER_PLATFORM_H */

@@ -1,6 +1,6 @@
 /* st_hw_session_lsm.h
  *
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -118,6 +118,7 @@ struct sound_trigger_device;
 
 #define ACD_CONFIDENCE_LEVELS_BIT (1 << 0)
 #define ACD_TIME_STAMP_INFO_BIT (1 << 1)
+#define ACD_CHANNEL_INDEX_INFO_BIT (1 << 3)
 
 struct lsm_param_smm_th_config {
     uint32_t minor_version;
