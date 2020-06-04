@@ -1592,7 +1592,6 @@ static void *callback_thread_loop(void *context)
                                  (st_hw_session_lsm_t *)context;
     st_lsm_event_status_t *params;
     char *st_lsm_event_cmd = NULL;
-    st_session_t *lsm_ses = NULL;
     unsigned int payload_alloc_size = SOUND_TRIGGER_MAX_EVNT_PAYLOAD_SIZE;
     int status = 0;
     int event_status, request;
@@ -1658,8 +1657,7 @@ static void *callback_thread_loop(void *context)
             continue;
         case LSM_VOICE_WAKEUP_STATUS_DETECTED:
             /* Check if IMC freeze event needs to be sent */
-            lsm_ses = get_sound_trigger_session(p_lsm_ses->common.stdev, p_lsm_ses->common.sm_handle);
-            if (lsm_ses->hw_proxy_ses->rc_config->capture_requested) {
+            if (p_lsm_ses->common.lab_enabled) {
                 platform_stdev_send_ffecns_freeze_event(p_lsm_ses->common.stdev->platform,
                     get_profile_type(&p_lsm_ses->common), true /* freeze */);
             }
