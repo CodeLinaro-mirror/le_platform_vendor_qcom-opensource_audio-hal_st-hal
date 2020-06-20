@@ -3189,14 +3189,14 @@ static int parse_generic_event_and_pack_opaque_data(
 
         case KEY_ID_KEYWORD_CHANNEL_INDEX:
             /* Pack the opaque data keyword indices structure */
-            param_hdr = (struct st_param_header *)(*opaque_data);
+            param_hdr = (struct st_param_header *)(opaque_data);
             param_hdr->key_id = ST_PARAM_KEY_CHANNEL_INDEX;
             param_hdr->payload_size = sizeof(struct st_channel_index_info);
-            *opaque_data += sizeof(struct st_param_header);
-            chan_info = (struct st_channel_index_info *)(*opaque_data);
+            opaque_data += sizeof(struct st_param_header);
+            chan_info = (struct st_channel_index_info *)(opaque_data);
             chan_info->version = 0x1;
             chan_info->channel_index = *((uint32_t *)payload + 3);
-            *opaque_data += param_hdr->payload_size;
+            opaque_data += param_hdr->payload_size;
             break;
 
         default:
