@@ -2603,6 +2603,12 @@ static int update_hw_config_on_start(st_session_t *stc_ses,
         if (v_info->merge_fs_soundmodels) {
             /* merge_fs_soundmodels is true only for QC SVA UUID */
 
+            if (conf_levels == NULL) {
+                ALOGE("%s: Unexpected, conf_levels pointer is NULL",
+                      __func__);
+                status = -EINVAL;
+                return status;
+            }
              /*
               * Note:
               * For ADSP case, the generated conf levles size must be equal to
@@ -2653,6 +2659,11 @@ static int update_hw_config_on_start(st_session_t *stc_ses,
              * during only one remaining client model as there won't be a
              * merged model yet.
              */
+            if (!conf_levels) {
+                ALOGE("%s: ERROR. conf levels alloc failed", __func__);
+                status = -ENOMEM;
+                return status;
+            }
             memcpy(stc_ses->sm_info.cf_levels, conf_levels,
                    stc_ses->sm_info.cf_levels_size);
 
@@ -2706,6 +2717,13 @@ static int update_hw_config_on_start(st_session_t *stc_ses,
 
 
     } else {
+        if (conf_levels == NULL) {
+                ALOGE("%s: Unexpected, conf_levels pointer is NULL",
+                      __func__);
+                status = -EINVAL;
+                return status;
+        }
+
         if (!st_ses->lab_enabled && enable_lab)
             st_ses->lab_enabled = true;
 
