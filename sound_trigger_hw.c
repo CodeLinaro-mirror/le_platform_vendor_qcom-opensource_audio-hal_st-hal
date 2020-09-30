@@ -1264,16 +1264,9 @@ static void handle_echo_ref_switch(audio_event_type_t event_type,
     pthread_mutex_unlock(&stdev->lock);
 }
 
-static int stdev_get_properties(const struct sound_trigger_hw_device *dev,
-    struct sound_trigger_properties *properties)
+static void get_base_properties(struct sound_trigger_device *stdev)
 {
-    struct sound_trigger_device *stdev = (struct sound_trigger_device *)dev;
-
-    ALOGI("%s", __func__);
-    if (properties == NULL) {
-        ALOGE("%s: NULL properties", __func__);
-        return -EINVAL;
-    }
+    ALOGI("%s: enter", __func__);
 
     stdev->hw_properties->concurrent_capture = stdev->conc_capture_supported;
 
@@ -1301,8 +1294,24 @@ static int stdev_get_properties(const struct sound_trigger_hw_device *dev,
            stdev->hw_properties->capture_transition,
            stdev->hw_properties->concurrent_capture);
 
-    memcpy(properties, stdev->hw_properties,
+    memset(&hw_properties_extended, 0, sizeof(hw_properties_extended));
+    memcpy(&hw_properties_extended.base, stdev->hw_properties,
            sizeof(struct sound_trigger_properties));
+}
+
+static int stdev_get_properties(const struct sound_trigger_hw_device *dev,
+    struct sound_trigger_properties *properties)
+{
+    struct sound_trigger_device *stdev = (struct sound_trigger_device *)dev;
+
+    ALOGI("%s", __func__);
+    if (properties == NULL) {
+        ALOGE("%s: NULL properties", __func__);
+        return -EINVAL;
+    }
+
+    get_base_properties(stdev);
+    properties = (struct sound_trigger_properties *)&hw_properties_extended.base;
     hw_properties_extended.header.version = SOUND_TRIGGER_DEVICE_API_VERSION_1_0;
     return 0;
 }
@@ -1510,8 +1519,8 @@ static void update_available_phrase_info
 
 static bool compare_recognition_config
 (
-   const struct sound_trigger_recognition_config *current_config,
-   struct sound_trigger_recognition_config *new_config
+   const struct sound_trigger_recognition_config *new_config,
+   struct sound_trigger_recognition_config *current_config
 )
 {
     unsigned int i = 0, j = 0;
@@ -1533,7 +1542,6 @@ static bool compare_recognition_config
         (current_config->capture_requested != new_config->capture_requested) ||
         (current_config->num_phrases != new_config->num_phrases) ||
         (current_config->data_size != new_config->data_size) ||
-        (current_config->data_offset != new_config->data_offset) ||
         (hw_properties_extended.header.version == SOUND_TRIGGER_DEVICE_API_VERSION_1_3 &&
          memcmp((char *) current_config + current_config->data_offset,
                (char *) new_config + sizeof(struct sound_trigger_recognition_config) +
@@ -2739,11 +2747,8 @@ stdev_get_properties_extended(const struct sound_trigger_hw_device *dev)
 
     stdev = (struct sound_trigger_device *)dev;
     prop_hdr = (struct sound_trigger_properties_header *)&hw_properties_extended;
-    status = stdev_get_properties(dev, &hw_properties_extended.base);
-    if (status) {
-        ALOGW("%s: Failed to initialize the stdev properties", __func__);
-        return NULL;
-    }
+    get_base_properties(stdev);
+
     hw_properties_extended.header.size = sizeof(struct sound_trigger_properties_extended_1_3);
     hw_properties_extended.audio_capabilities = 0;
     hw_properties_extended.header.version = SOUND_TRIGGER_DEVICE_API_VERSION_1_3;
@@ -2952,6 +2957,11 @@ static int stdev_open(const hw_module_t* module, const char* name,
     *device = &stdev->device.common;
     stdev_ref_cnt++;
     pthread_mutex_unlock(&stdev_init_lock);
+
+    get_base_properties(stdev);
+    hw_properties_extended.header.size = sizeof(struct sound_trigger_properties_extended_1_3);
+    hw_properties_extended.audio_capabilities = 0;
+    hw_properties_extended.header.version = SOUND_TRIGGER_DEVICE_API_VERSION_1_3;
 
     ATRACE_END();
     return 0;
@@ -3288,6 +3298,15 @@ int sound_trigger_hw_call_back(audio_event_type_t event,
             break;
         }
         handle_screen_status_change(config);
+        break;
+
+    case AUDIO_EVENT_ROUTE_INIT_DONE:
+        if (!config) {
+            ALOGE("%s: NULL config for AUDIO_EVENT_ROUTE_INIT_DONE", __func__);
+            ret = -EINVAL;
+            break;
+        }
+        stdev->audio_route = config->u.audio_route;
         break;
 
     default:
