@@ -3429,6 +3429,22 @@ bool platform_stdev_is_dedicated_sva_path
     return true;
 }
 
+bool platform_stdev_backend_reset_allowed
+(
+    void *platform
+)
+{
+    struct platform_data *my_data = (struct platform_data *)platform;
+    sound_trigger_device_t *stdev = my_data->stdev;
+
+    if (stdev->conc_capture_supported &&
+        stdev->tx_concurrency_active > 0 &&
+        !platform_stdev_is_dedicated_sva_path(platform))
+        return false;
+    else
+        return true;
+}
+
 static int platform_stdev_get_device_sample_rate
 (
    struct platform_data *my_data,
