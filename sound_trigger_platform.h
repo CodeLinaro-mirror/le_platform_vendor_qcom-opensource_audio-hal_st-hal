@@ -732,6 +732,11 @@ bool platform_stdev_is_dedicated_sva_path
    void *platform
 );
 
+bool platform_stdev_backend_reset_allowed
+(
+   void *platform
+);
+
 int platform_stdev_derive_mixer_ctl_from_backend
 (
     void *platform,
