@@ -57,6 +57,10 @@ AM_CFLAGS += -DST_MULTI_STAGE_ENABLED
 AM_CFLAGS += -I $(top_srcdir)/ext_headers
 endif
 
+if ST_DEFERRED_STOP_ENABLED
+AM_CFLAGS += -DST_DEFERRED_STOP_ENABLED
+endif
+
 lib_includedir = $(includedir)/sound_trigger
 lib_include_HEADERS = sound_trigger_prop_intf.h sound_trigger_hw.h
 
