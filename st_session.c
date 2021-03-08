@@ -4,7 +4,7 @@
  * user session. This state machine implements logic for handling all user
  * interactions, detectinos, SSR and Audio Concurencies.
  *
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -239,7 +239,8 @@ void hw_sess_cb(st_hw_sess_event_t *hw_event, void *cookie)
         if (st_ses->det_stc_ses->pending_stop) {
             ALOGV("%s:[%d] pending stop already queued, ignore event",
                 __func__, st_ses->sm_handle);
-        } else if (!st_ses->det_stc_ses->detection_sent) {
+        } else if (!lock_status && !st_ses->det_stc_ses->detection_sent &&
+                    st_ses->current_state == buffering_state_fn) {
                 ev.ev_id = ST_SES_EV_RESTART;
                 DISPATCH_EVENT(st_ses, ev, status);
                 ALOGV("%s:[%d] client callback hasn't been called, restart detection evt_id(%d)",
@@ -2947,9 +2948,19 @@ static int start_hw_session(st_proxy_session_t *st_ses, st_hw_session_t *hw_ses,
         hw_ses->lpi_enable = hw_ses->stdev->lpi_enable;
         hw_ses->barge_in_mode = hw_ses->stdev->barge_in_mode;
         do_unload = true;
-        platform_stdev_reset_backend_cfg(hw_ses->stdev->platform);
+        /*
+         * When LSM is in buffering state and if we remove the power
+         * cable it will change the battery status. So LPI mode switch from
+         * NLPI to LPI should happen as a part of handle_battery_status_change().
+         * As session is in buffering state,we can't directly change the LPI mode,
+         * so change the mode for subsequent detections, for that we have to reset
+         * backend when next detection is triggered.
+         */
+        if (hw_ses->stdev->is_buffering) {
+            platform_stdev_reset_backend_cfg(hw_ses->stdev->platform);
+            hw_ses->stdev->is_buffering = false;
+        }
     }
-
     /*
      * For gcs sessions, uid may be changed for new capture device,
      * in this case, sm must be dereg and reg again.
