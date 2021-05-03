@@ -2,7 +2,7 @@
  *
  * This file contains the platform specific functionality.
  *
- * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -5685,9 +5685,12 @@ void platform_stdev_send_ec_ref_cfg
         event_info.st_ec_ref_enabled = enable;
         // reset the pending active EC mixer ctls first
         if (!stdev->audio_ec_enabled && stdev->ec_reset_pending_cnt > 0) {
-            while (stdev->ec_reset_pending_cnt--)
+            ALOGD("%s: reset the pending active EC mixer ctl count %d",
+                   __func__,stdev->ec_reset_pending_cnt);
+            do {
                 audio_route_reset_and_update_path(stdev->audio_route,
                         my_data->ec_ref_mixer_path);
+            } while((--(stdev->ec_reset_pending_cnt)) > 0);
         }
         if (enable) {
             stdev->audio_hal_cb(ST_EVENT_UPDATE_ECHO_REF, &event_info);
