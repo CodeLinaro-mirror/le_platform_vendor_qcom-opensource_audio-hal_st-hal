@@ -1,6 +1,6 @@
 /* sound_trigger_platform.h
  *
- * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -377,6 +377,7 @@ struct st_vendor_info {
     unsigned int avail_transit_ape_phrases;
     unsigned int avail_transit_ape_users;
     st_exec_mode_config_t exec_mode_cfg;
+    bool second_stage_supported;
     bool lpi_enable;
     bool vad_enable;
     struct lab_dam_cfg_payload lab_dam_cfg_payload;
@@ -443,6 +444,14 @@ void *platform_stdev_init(struct sound_trigger_device *stdev);
 void platform_stdev_deinit(void *platform);
 
 int platform_stdev_get_device
+(
+   void *platform,
+   struct st_vendor_info* v_info,
+   audio_devices_t device,
+   st_exec_mode_t exec_mode
+);
+
+int platform_stdev_get_device_for_cal
 (
    void *platform,
    struct st_vendor_info* v_info,
@@ -652,6 +661,11 @@ void platform_stdev_check_and_append_usecase
    char *use_case
 );
 
+void platform_stdev_disable_stale_devices
+(
+    void *platform
+);
+
 void platform_stdev_check_and_update_ec_ref_config
 (
    void *platform,
@@ -709,6 +723,11 @@ bool platform_stdev_is_hwmad_backend
 bool platform_stdev_is_dedicated_sva_path
 (
    void *platform
+);
+
+bool platform_stdev_backend_reset_allowed
+(
+    void *platform
 );
 
 int platform_stdev_derive_mixer_ctl_from_backend

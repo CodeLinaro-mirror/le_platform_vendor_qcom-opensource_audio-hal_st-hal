@@ -574,6 +574,8 @@ static void ape_enable_use_case(bool enable, st_hw_session_t *p_ses)
     st_hw_session_lsm_t *p_lsm_ses = (st_hw_session_lsm_t *)p_ses;
     st_profile_type_t profile_type = get_profile_type(p_ses);
     char use_case[USECASE_STRING_SIZE];
+    audio_devices_t capture_device = 0;
+    st_device_t st_device = 0;
 
     if (enable) {
         strlcpy(use_case,
@@ -582,8 +584,11 @@ static void ape_enable_use_case(bool enable, st_hw_session_t *p_ses)
         platform_stdev_check_and_append_usecase(p_ses->stdev->platform,
                                                 use_case);
         ALOGD("%s: enable use case = %s", __func__, use_case);
+        capture_device = platform_stdev_get_capture_device(p_ses->stdev->platform);
+        st_device = platform_stdev_get_device_for_cal(p_ses->stdev->platform,
+            p_ses->vendor_uuid_info, capture_device, p_ses->exec_mode);
         platform_stdev_send_stream_app_type_cfg(p_ses->stdev->platform,
-                                   p_lsm_ses->pcm_id, p_ses->st_device,
+                                   p_lsm_ses->pcm_id, st_device,
                                    p_ses->exec_mode, profile_type);
 
         platform_stdev_send_ec_ref_cfg(p_ses->stdev->platform, profile_type, true);
@@ -2174,8 +2179,10 @@ static int ape_reg_sm_params(st_hw_session_t* p_ses,
      * Custom config is mandatory for adsp multi-stage session,
      * Default config would be sent if not explicitly set from client applicaiton.
      */
-    if ((p_ses->custom_data_size && !disable_custom_config) ||
-        !list_empty(&p_ses->lsm_ss_cfg_list)) {
+    ALOGD("%s: second state detection %s",__func__,
+             p_ses->vendor_uuid_info->second_stage_supported ? "supported" : "not supported");
+    if (((p_ses->custom_data_size && !disable_custom_config) ||
+        !list_empty(&p_ses->lsm_ss_cfg_list)) && p_ses->vendor_uuid_info->second_stage_supported) {
         /* fill opaque data as custom params */
         cus_params = &param_info[param_count++];
         if (param_tag_tracker & PARAM_CUSTOM_CONFIG_BIT) {
