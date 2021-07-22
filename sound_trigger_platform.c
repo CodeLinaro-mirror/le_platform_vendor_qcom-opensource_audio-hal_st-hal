@@ -87,6 +87,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_CONCURRENT_CAPTURE "concurrent_capture"
 #define ST_PARAM_KEY_CONCURRENT_VOICE_CALL "concurrent_voice_call"
 #define ST_PARAM_KEY_CONCURRENT_VOIP_CALL "concurrent_voip_call"
+#define ST_PARAM_KEY_BEST_CHANNEL_INDEX "enable_best_channel_index"
 
 
 #define ST_PARAM_KEY_FIRMWARE_IMAGE "firmware_image"
@@ -129,6 +130,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_KW_START_TOLERANCE "kw_start_tolerance"
 #define ST_PARAM_KEY_KW_END_TOLERANCE "kw_end_tolerance"
 #define ST_PARAM_KEY_EXECUTION_TYPE "execution_type"
+#define ST_PARAM_KEY_SECOND_STAGE_SUPPORTED "second_stage_supported"
 #define ST_PARAM_KEY_EVENT_TIMESTAMP_MODE "event_timestamp_mode"
 #define ST_PARAM_KEY_BACKEND_PORT_NAME "backend_port_name"
 #define ST_PARAM_KEY_BACKEND_DAI_NAME "backend_dai_name"
@@ -422,6 +424,8 @@ struct platform_data {
 
     char vendor_config_path[MIXER_PATH_MAX_LENGTH];
     char xml_file_path[MIXER_PATH_MAX_LENGTH];
+
+    bool enable_best_channel_idx;
 };
 
 
@@ -1160,6 +1164,14 @@ static int platform_set_common_config
     if (err >= 0) {
         str_parms_del(parms, ST_PARAM_KEY_ENABLE_DEBUG_DUMPS);
         stdev->enable_debug_dumps =
+            !strncasecmp(str_value, "true", 4) ? true : false;
+    }
+
+    err = str_parms_get_str(parms, ST_PARAM_KEY_BEST_CHANNEL_INDEX,
+                            str_value, sizeof(str_value));
+    if (err >= 0) {
+        str_parms_del(parms, ST_PARAM_KEY_BEST_CHANNEL_INDEX);
+        my_data->enable_best_channel_idx =
             !strncasecmp(str_value, "true", 4) ? true : false;
     }
 
@@ -2655,6 +2667,21 @@ static int platform_stdev_set_sm_config_params
             sm_info->exec_mode_cfg = EXEC_MODE_CFG_ARM;
         } else {
             ALOGE("%s: invalid exec type set: %s", __func__, str_value);
+        }
+    }
+
+    err = str_parms_get_str(parms, ST_PARAM_KEY_SECOND_STAGE_SUPPORTED,
+                            str_value, sizeof(str_value));
+    //By default set to true
+    sm_info->second_stage_supported = true;
+    if (err >= 0) {
+        str_parms_del(parms, ST_PARAM_KEY_SECOND_STAGE_SUPPORTED);
+        if (!strcmp(str_value, "true")) {
+           sm_info->second_stage_supported = true;
+        } else if (!strcmp(str_value, "false")) {
+           sm_info->second_stage_supported = false;
+        } else {
+            ALOGE("%s: invalid second stage support value set: %s", __func__, str_value);
         }
     }
 
@@ -5930,6 +5957,7 @@ void platform_stdev_disable_stale_devices
     sound_trigger_device_t *stdev = my_data->stdev;
     char st_device_name[DEVICE_NAME_MAX_SIZE] = {0};
 
+    bool dev_disabled = false;
     /*
      * There can be stale devices while exec_mode is NONE with the
      * below usecase:
@@ -5954,8 +5982,11 @@ void platform_stdev_disable_stale_devices
                                                   st_device_name);
                 ATRACE_END();
                 --(stdev->dev_enable_cnt[i]);
+                dev_disabled = true;
             }
         }
+        if (!dev_disabled)
+            stdev->disable_stale = true;
         pthread_mutex_unlock(&stdev->ref_cnt_lock);
     }
 }
@@ -6485,4 +6516,11 @@ int platform_stdev_derive_mixer_ctl_from_backend
     strlcat(mixer_ctl_name, my_data->backend_dai_name, MIXER_PATH_MAX_LENGTH);
 
     return 0;
+}
+
+bool platform_is_best_channel_index_supported(void* platform)
+{
+    struct platform_data *my_data = (struct platform_data *)platform;
+
+    return my_data->enable_best_channel_idx;
 }
