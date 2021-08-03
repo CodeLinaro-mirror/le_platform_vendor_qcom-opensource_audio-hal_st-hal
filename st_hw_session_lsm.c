@@ -2,7 +2,7 @@
  *
  * This file implements the hw session functionality specific to LSM HW
  *
- * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -574,6 +574,8 @@ static void ape_enable_use_case(bool enable, st_hw_session_t *p_ses)
     st_hw_session_lsm_t *p_lsm_ses = (st_hw_session_lsm_t *)p_ses;
     st_profile_type_t profile_type = get_profile_type(p_ses);
     char use_case[USECASE_STRING_SIZE];
+    audio_devices_t capture_device = 0;
+    st_device_t st_device = 0;
 
     if (enable) {
         strlcpy(use_case,
@@ -582,8 +584,11 @@ static void ape_enable_use_case(bool enable, st_hw_session_t *p_ses)
         platform_stdev_check_and_append_usecase(p_ses->stdev->platform,
                                                 use_case);
         ALOGD("%s: enable use case = %s", __func__, use_case);
+        capture_device = platform_stdev_get_capture_device(p_ses->stdev->platform);
+        st_device = platform_stdev_get_device_for_cal(p_ses->stdev->platform,
+            p_ses->vendor_uuid_info, capture_device, p_ses->exec_mode);
         platform_stdev_send_stream_app_type_cfg(p_ses->stdev->platform,
-                                   p_lsm_ses->pcm_id, p_ses->st_device,
+                                   p_lsm_ses->pcm_id, st_device,
                                    p_ses->exec_mode, profile_type);
 
         platform_stdev_send_ec_ref_cfg(p_ses->stdev->platform, profile_type, true);
@@ -864,7 +869,10 @@ static void *buffer_thread_loop(void *context)
         ST_DBG_DECLARE(FILE *fptr_drv = NULL; static int file_cnt = 0);
         if (p_lsm_ses->common.stdev->enable_debug_dumps) {
             ST_DBG_FILE_OPEN_WR(fptr_drv, ST_DEBUG_DUMP_LOCATION,
-                                "st_lab_drv_data_ape", "pcm", file_cnt++);
+                                "st_lab_drv_data_ape", "pcm", file_cnt);
+            ALOGD("%s: Buffer data from DSP stored in: st_lab_drv_data_ape_%d.bin",
+                __func__, file_cnt);
+            file_cnt++;
         }
 
         ATRACE_BEGIN("sthal:lsm: buffer_thread_loop");
@@ -1226,11 +1234,14 @@ static void *callback_thread_loop(void *context)
             ST_DBG_DECLARE(FILE *detect_fd = NULL;
                 static int detect_fd_cnt = 0);
             ST_DBG_FILE_OPEN_WR(detect_fd, ST_DEBUG_DUMP_LOCATION,
-                "lsm_detection_event", "bin", detect_fd_cnt++);
+                "lsm_detection_event", "bin", detect_fd_cnt);
             ST_DBG_FILE_WRITE(detect_fd,
                 hw_sess_event.payload.detected.detect_payload,
                 hw_sess_event.payload.detected.payload_size);
             ST_DBG_FILE_CLOSE(detect_fd);
+            ALOGD("%s: Detection payload from DSP stored in: lsm_detection_event_%d.bin",
+                __func__, detect_fd_cnt);
+            detect_fd_cnt++;
         }
 
         pthread_mutex_unlock(&p_lsm_ses->callback_thread_lock);
@@ -1487,6 +1498,8 @@ static int set_param_reg_multi_sm(st_hw_session_lsm_t *p_ses, void *sm_data,
     lsm_param_info_t param_info = {0};
     struct snd_lsm_module_params lsm_params = {0};
     struct st_module_param_info *mparams = NULL;
+
+    ALOGD("%s: Reg PDK5 sound model", __func__);
 
     mparams = p_ses->lsm_usecase.params;
     sm_header.model_id = model_id;
@@ -2166,8 +2179,10 @@ static int ape_reg_sm_params(st_hw_session_t* p_ses,
      * Custom config is mandatory for adsp multi-stage session,
      * Default config would be sent if not explicitly set from client applicaiton.
      */
-    if ((p_ses->custom_data_size && !disable_custom_config) ||
-        !list_empty(&p_ses->lsm_ss_cfg_list)) {
+    ALOGD("%s: second state detection %s",__func__,
+             p_ses->vendor_uuid_info->second_stage_supported ? "supported" : "not supported");
+    if (((p_ses->custom_data_size && !disable_custom_config) ||
+        !list_empty(&p_ses->lsm_ss_cfg_list)) && p_ses->vendor_uuid_info->second_stage_supported) {
         /* fill opaque data as custom params */
         cus_params = &param_info[param_count++];
         if (param_tag_tracker & PARAM_CUSTOM_CONFIG_BIT) {
@@ -2319,10 +2334,13 @@ static int ape_reg_sm_params(st_hw_session_t* p_ses,
             ST_DBG_DECLARE(FILE *lsm_params_fd = NULL;
                 static int lsm_params_cnt = 0);
             ST_DBG_FILE_OPEN_WR(lsm_params_fd, ST_DEBUG_DUMP_LOCATION,
-                "lsm_params_data", "bin", lsm_params_cnt++);
+                "lsm_params_data", "bin", lsm_params_cnt);
             ST_DBG_FILE_WRITE(lsm_params_fd, lsm_params.params,
                 lsm_params.data_size);
             ST_DBG_FILE_CLOSE(lsm_params_fd);
+            ALOGD("%s: LSM module params stored in: lsm_params_data_%d.bin",
+                __func__, lsm_params_cnt);
+            lsm_params_cnt++;
         }
 
         status = lsm_set_module_params(p_lsm_ses, &lsm_params);
@@ -2443,10 +2461,13 @@ static int ape_reg_sm_params(st_hw_session_t* p_ses,
                 ST_DBG_DECLARE(FILE *lsm_params_fd = NULL;
                     static int lsm_params_cnt = 0);
                 ST_DBG_FILE_OPEN_WR(lsm_params_fd, ST_DEBUG_DUMP_LOCATION,
-                    "lsm_params_data", "bin", lsm_params_cnt++);
+                    "lsm_params_data", "bin", lsm_params_cnt);
                 ST_DBG_FILE_WRITE(lsm_params_fd, lsm_params.params,
                     lsm_params.data_size);
                 ST_DBG_FILE_CLOSE(lsm_params_fd);
+                ALOGD("%s: Multi Stage LSM module params stored in: lsm_params_data_%d.bin",
+                    __func__, lsm_params_cnt);
+                lsm_params_cnt++;
             }
 
             status = lsm_set_module_params(p_lsm_ses, &lsm_params);
@@ -3214,10 +3235,13 @@ static int send_detection_request(st_hw_session_t *p_ses)
         ST_DBG_DECLARE(FILE *req_event_fd = NULL;
             static int req_event_cnt = 0);
         ST_DBG_FILE_OPEN_WR(req_event_fd, ST_DEBUG_DUMP_LOCATION,
-            "requested_event_lsm", "bin", req_event_cnt++);
+            "requested_event_lsm", "bin", req_event_cnt);
         ST_DBG_FILE_WRITE(req_event_fd, param_info.param_data,
             param_info.param_size);
         ST_DBG_FILE_CLOSE(req_event_fd);
+        ALOGD("%s: Requested detection event dump stored in: lsm_params_data_%d.bin",
+            __func__, req_event_cnt);
+        req_event_cnt++;
     }
 
     status = lsm_set_module_params(p_lsm_ses, &lsm_params);

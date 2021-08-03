@@ -2,7 +2,7 @@
  *
  * This file contains the platform specific functionality.
  *
- * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -128,6 +128,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_KW_START_TOLERANCE "kw_start_tolerance"
 #define ST_PARAM_KEY_KW_END_TOLERANCE "kw_end_tolerance"
 #define ST_PARAM_KEY_EXECUTION_TYPE "execution_type"
+#define ST_PARAM_KEY_SECOND_STAGE_SUPPORTED "second_stage_supported"
 #define ST_PARAM_KEY_EVENT_TIMESTAMP_MODE "event_timestamp_mode"
 #define ST_PARAM_KEY_BACKEND_PORT_NAME "backend_port_name"
 #define ST_PARAM_KEY_BACKEND_DAI_NAME "backend_dai_name"
@@ -2658,6 +2659,21 @@ static int platform_stdev_set_sm_config_params
         }
     }
 
+    err = str_parms_get_str(parms, ST_PARAM_KEY_SECOND_STAGE_SUPPORTED,
+                            str_value, sizeof(str_value));
+    //By default set to true
+    sm_info->second_stage_supported = true;
+    if (err >= 0) {
+        str_parms_del(parms, ST_PARAM_KEY_SECOND_STAGE_SUPPORTED);
+        if (!strcmp(str_value, "true")) {
+           sm_info->second_stage_supported = true;
+        } else if (!strcmp(str_value, "false")) {
+           sm_info->second_stage_supported = false;
+        } else {
+            ALOGE("%s: invalid second stage support value set: %s", __func__, str_value);
+        }
+    }
+
     err = str_parms_get_str(parms, ST_PARAM_KEY_APP_TYPE,
                             str_value, sizeof(str_value));
     if (err >= 0) {
@@ -3797,6 +3813,22 @@ bool platform_stdev_is_dedicated_sva_path
     return true;
 }
 
+bool platform_stdev_backend_reset_allowed
+(
+    void *platform
+)
+{
+    struct platform_data *my_data = (struct platform_data *)platform;
+    sound_trigger_device_t *stdev = my_data->stdev;
+
+    if (stdev->conc_capture_supported &&
+        stdev->tx_concurrency_active > 0 &&
+        !platform_stdev_is_dedicated_sva_path(platform))
+        return false;
+    else
+        return true;
+}
+
 static int platform_stdev_get_device_sample_rate
 (
    struct platform_data *my_data,
@@ -4582,6 +4614,17 @@ int platform_stdev_get_device
     return get_st_device(platform, v_info, device, exec_mode, false);
 }
 
+int platform_stdev_get_device_for_cal
+(
+    void *platform,
+    struct st_vendor_info* v_info,
+    audio_devices_t device,
+    enum st_exec_mode exec_mode
+)
+{
+    return get_st_device(platform, v_info, device, exec_mode, true);
+}
+
 audio_devices_t platform_stdev_get_capture_device
 (
    void *platform
@@ -5005,8 +5048,8 @@ bool platform_stdev_check_and_update_concurrency
     if (event_type == AUDIO_EVENT_CAPTURE_DEVICE_ACTIVE ||
         event_type == AUDIO_EVENT_CAPTURE_DEVICE_INACTIVE) {
         /* handle CAPTURE_DEVICE events */
-        ALOGI("%s: Received DEVICE event, event type %d",
-              __func__, event_type);
+        ALOGI("%s: Received DEVICE event, event type %d, usecase type %d",
+              __func__, event_type, config->u.usecase.type);
         /*
          * for device status events, if:
          * 1. conc audio disabled - return with false to disable VA sessions
@@ -5016,10 +5059,30 @@ bool platform_stdev_check_and_update_concurrency
         switch (event_type) {
             case AUDIO_EVENT_CAPTURE_DEVICE_ACTIVE:
                 stdev->tx_concurrency_active++;
+                switch (config->u.usecase.type) {
+                    case USECASE_TYPE_VOICE_CALL:
+                        stdev->conc_voice_active = true;
+                        break;
+                    case USECASE_TYPE_VOIP_CALL:
+                        stdev->conc_voip_active = true;
+                        break;
+                    default:
+                        break;
+                }
                 break;
             case AUDIO_EVENT_CAPTURE_DEVICE_INACTIVE:
                 if (stdev->tx_concurrency_active > 0)
                     stdev->tx_concurrency_active--;
+                switch (config->u.usecase.type) {
+                    case USECASE_TYPE_VOICE_CALL:
+                        stdev->conc_voice_active = false;
+                        break;
+                    case USECASE_TYPE_VOIP_CALL:
+                        stdev->conc_voip_active = false;
+                        break;
+                    default:
+                        break;
+                }
                 break;
             default:
                 break;
@@ -5033,39 +5096,15 @@ bool platform_stdev_check_and_update_concurrency
         ALOGI("%s: Received STREAM event, event type %d, usecase type %d",
               __func__, event_type, config->u.usecase.type);
         switch (event_type) {
-        case AUDIO_EVENT_CAPTURE_STREAM_ACTIVE:
-            switch (config->u.usecase.type) {
-                case USECASE_TYPE_VOICE_CALL:
-                    stdev->conc_voice_active = true;
-                    break;
-                case USECASE_TYPE_VOIP_CALL:
-                    stdev->conc_voip_active = true;
-                    break;
-                default:
-                    break;
-            }
-            break;
-        case AUDIO_EVENT_CAPTURE_STREAM_INACTIVE:
-            switch (config->u.usecase.type) {
-                case USECASE_TYPE_VOICE_CALL:
-                    stdev->conc_voice_active = false;
-                    break;
-                case USECASE_TYPE_VOIP_CALL:
-                    stdev->conc_voip_active = false;
-                    break;
-                default:
-                    break;
-            }
-            break;
-        case AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE:
-                stdev->rx_concurrency_active++;
-            break;
-        case AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE:
-            if (stdev->rx_concurrency_active > 0)
-                stdev->rx_concurrency_active--;
-            break;
-        default:
-            break;
+            case AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE:
+                    stdev->rx_concurrency_active++;
+                break;
+            case AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE:
+                if (stdev->rx_concurrency_active > 0)
+                    stdev->rx_concurrency_active--;
+                break;
+            default:
+                break;
         }
         if (event_type == AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE ||
             event_type == AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE) {
@@ -5085,15 +5124,20 @@ bool platform_stdev_check_and_update_concurrency
     }
 
     /*
-     * Mark reset_backend as false to prevent disabling tx
-     * device when pausing VA sessions.
+     * This disablement of VOIP/Voice flags is needed for the following usecase:
+     *
+     * 1. VOIP/Voice and AR active.
+     * 2. VOIP/Voice stops - AHAL sends stream inactive events for each stream,
+     *    followed by the shared device inactive and device active events which
+     *    both have VOIP/voice usecase, followed by one stream active event for AR.
+     * 3. AR stops - stream and device inactive events with pcm capture usecase.
+     *
+     * In this usecase the VOIP/voice flags get stuck set to true, so reset them here.
      */
-    if (stdev->conc_capture_supported &&
-        stdev->tx_concurrency_active > 0 &&
-        (!platform_stdev_is_dedicated_sva_path(stdev->platform)))
-        stdev->reset_backend = false;
-    else
-        stdev->reset_backend = true;
+    if (stdev->tx_concurrency_active == 0) {
+        stdev->conc_voice_active = false;
+        stdev->conc_voip_active = false;
+    }
 
     ALOGD("%s: dedicated path %d, reset backend %d, tx %d, rx %d,"
           " concurrency session%s allowed",
@@ -5891,6 +5935,45 @@ int platform_stdev_get_device_app_type
 
     ALOGV("%s: app type %d for profile %d", __func__, app_type, profile_type);
     return app_type;
+}
+
+void platform_stdev_disable_stale_devices
+(
+    void *platform
+)
+{
+    struct platform_data *my_data = (struct platform_data *)platform;
+    sound_trigger_device_t *stdev = my_data->stdev;
+    char st_device_name[DEVICE_NAME_MAX_SIZE] = {0};
+
+    /*
+     * There can be stale devices while exec_mode is NONE with the
+     * below usecase:
+     *
+     *    1. SVA is active in non-dedicated path mode.
+     *    2. Tx starts, transitioning SVA to NLPI.
+     *    3. SVA stops and unloads, but cannot disable the BE device.
+     *    4. Tx stops - this function will get called with exec_mode NONE.
+     */
+    if (stdev->exec_mode == ST_EXEC_MODE_ADSP ||
+        (stdev->exec_mode == ST_EXEC_MODE_NONE &&
+         !stdev->is_gcs)) {
+        pthread_mutex_lock(&stdev->ref_cnt_lock);
+        for (int i = ST_DEVICE_MIN; i < ST_DEVICE_MAX; i++) {
+            if (0 < stdev->dev_enable_cnt[i]) {
+                platform_stdev_get_device_name(stdev->platform,
+                    ST_EXEC_MODE_ADSP, i, st_device_name);
+                ALOGD("%s: disable device (%x) = %s", __func__, i,
+                    st_device_name);
+                ATRACE_BEGIN("sthal: audio_route_reset_and_update_path");
+                audio_route_reset_and_update_path(stdev->audio_route,
+                                                  st_device_name);
+                ATRACE_END();
+                --(stdev->dev_enable_cnt[i]);
+            }
+        }
+        pthread_mutex_unlock(&stdev->ref_cnt_lock);
+    }
 }
 
 static void check_and_append_ec_ref_device_name
