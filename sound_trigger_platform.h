@@ -383,6 +383,7 @@ struct st_vendor_info {
     unsigned int avail_transit_ape_phrases;
     unsigned int avail_transit_ape_users;
     st_exec_mode_config_t exec_mode_cfg;
+    bool second_stage_supported;
     bool lpi_enable;
     bool vad_enable;
     struct lab_dam_cfg_payload lab_dam_cfg_payload;
@@ -741,4 +742,8 @@ int platform_stdev_derive_mixer_ctl_from_backend
     char *mixer_ctl_name
 );
 
+bool platform_is_best_channel_index_supported
+(
+    void* platform
+);
 #endif /* SOUND_TRIGGER_PLATFORM_H */
