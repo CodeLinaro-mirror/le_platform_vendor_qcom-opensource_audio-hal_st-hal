@@ -87,6 +87,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_CONCURRENT_CAPTURE "concurrent_capture"
 #define ST_PARAM_KEY_CONCURRENT_VOICE_CALL "concurrent_voice_call"
 #define ST_PARAM_KEY_CONCURRENT_VOIP_CALL "concurrent_voip_call"
+#define ST_PARAM_KEY_BEST_CHANNEL_INDEX "enable_best_channel_index"
 
 
 #define ST_PARAM_KEY_FIRMWARE_IMAGE "firmware_image"
@@ -129,6 +130,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_KW_START_TOLERANCE "kw_start_tolerance"
 #define ST_PARAM_KEY_KW_END_TOLERANCE "kw_end_tolerance"
 #define ST_PARAM_KEY_EXECUTION_TYPE "execution_type"
+#define ST_PARAM_KEY_SECOND_STAGE_SUPPORTED "second_stage_supported"
 #define ST_PARAM_KEY_EVENT_TIMESTAMP_MODE "event_timestamp_mode"
 #define ST_PARAM_KEY_BACKEND_PORT_NAME "backend_port_name"
 #define ST_PARAM_KEY_BACKEND_DAI_NAME "backend_dai_name"
@@ -422,6 +424,8 @@ struct platform_data {
 
     char vendor_config_path[MIXER_PATH_MAX_LENGTH];
     char xml_file_path[MIXER_PATH_MAX_LENGTH];
+
+    bool enable_best_channel_idx;
 };
 
 
@@ -1160,6 +1164,14 @@ static int platform_set_common_config
     if (err >= 0) {
         str_parms_del(parms, ST_PARAM_KEY_ENABLE_DEBUG_DUMPS);
         stdev->enable_debug_dumps =
+            !strncasecmp(str_value, "true", 4) ? true : false;
+    }
+
+    err = str_parms_get_str(parms, ST_PARAM_KEY_BEST_CHANNEL_INDEX,
+                            str_value, sizeof(str_value));
+    if (err >= 0) {
+        str_parms_del(parms, ST_PARAM_KEY_BEST_CHANNEL_INDEX);
+        my_data->enable_best_channel_idx =
             !strncasecmp(str_value, "true", 4) ? true : false;
     }
 
@@ -2655,6 +2667,21 @@ static int platform_stdev_set_sm_config_params
             sm_info->exec_mode_cfg = EXEC_MODE_CFG_ARM;
         } else {
             ALOGE("%s: invalid exec type set: %s", __func__, str_value);
+        }
+    }
+
+    err = str_parms_get_str(parms, ST_PARAM_KEY_SECOND_STAGE_SUPPORTED,
+                            str_value, sizeof(str_value));
+    //By default set to true
+    sm_info->second_stage_supported = true;
+    if (err >= 0) {
+        str_parms_del(parms, ST_PARAM_KEY_SECOND_STAGE_SUPPORTED);
+        if (!strcmp(str_value, "true")) {
+           sm_info->second_stage_supported = true;
+        } else if (!strcmp(str_value, "false")) {
+           sm_info->second_stage_supported = false;
+        } else {
+            ALOGE("%s: invalid second stage support value set: %s", __func__, str_value);
         }
     }
 
@@ -5097,9 +5124,10 @@ bool platform_stdev_check_and_update_concurrency
              ((!stdev->conc_voice_call_supported && stdev->conc_voice_active) ||
               (!stdev->conc_voip_call_supported && stdev->conc_voip_active))))
             concurrency_ses_allowed = false;
-    } else {
-        /* handle CAPTURE_STREAM events */
-        ALOGI("%s: Received STREAM event, event type %d, usecase type %d",
+    } else if (event_type == AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE ||
+               event_type == AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE) {
+        /* handle PLAYBACK_STREAM events */
+        ALOGI("%s: Received PLAYBACK_STREAM event, event type %d, usecase type %d",
               __func__, event_type, config->u.usecase.type);
         switch (event_type) {
             case AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE:
@@ -5112,17 +5140,61 @@ bool platform_stdev_check_and_update_concurrency
             default:
                 break;
         }
-        if (event_type == AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE ||
-            event_type == AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE) {
-            if (stdev->rx_concurrency_disabled &&
-                stdev->rx_concurrency_active > 0 &&
-                num_sessions > stdev->rx_conc_max_st_ses)
-                concurrency_ses_allowed = false;
-        }
+        if (stdev->rx_concurrency_disabled &&
+            stdev->rx_concurrency_active > 0 &&
+            num_sessions > stdev->rx_conc_max_st_ses)
+            concurrency_ses_allowed = false;
+
         if (concurrency_ses_allowed)
             concurrency_ses_allowed = stdev->session_allowed;
-    }
+    } else if (event_type == AUDIO_EVENT_CAPTURE_STREAM_ACTIVE ||
+               event_type == AUDIO_EVENT_CAPTURE_STREAM_INACTIVE) {
+        /* handle CAPTURE_STREAM events */
+        /*
+         * This handling is required in case of voice/voip call and
+         * audio-record are active. And one of the usecases stops then
+         * only stream capture events will be posted to ST HAL as
+         * shared device is still active. So we need to update the
+         * concurrency support depending on concurrency related flags.
+         */
+        ALOGI("%s: Received CAPTURE_STREAM event, event type %d, usecase type %d",
+              __func__, event_type, config->u.usecase.type);
 
+        switch (event_type) {
+            case AUDIO_EVENT_CAPTURE_STREAM_ACTIVE:
+                switch (config->u.usecase.type) {
+                    case USECASE_TYPE_VOICE_CALL:
+                        stdev->conc_voice_active = true;
+                        break;
+                    case USECASE_TYPE_VOIP_CALL:
+                        stdev->conc_voip_active = true;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case AUDIO_EVENT_CAPTURE_STREAM_INACTIVE:
+                switch (config->u.usecase.type) {
+                    case USECASE_TYPE_VOICE_CALL:
+                        stdev->conc_voice_active = false;
+                        break;
+                    case USECASE_TYPE_VOIP_CALL:
+                        stdev->conc_voip_active = false;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            default:
+                break;
+        }
+        if ((!stdev->conc_capture_supported &&
+             stdev->tx_concurrency_active > 0) ||
+            (stdev->conc_capture_supported &&
+             ((!stdev->conc_voice_call_supported && stdev->conc_voice_active) ||
+              (!stdev->conc_voip_call_supported && stdev->conc_voip_active))))
+                   concurrency_ses_allowed = false;
+    }
     ALOGD("%s: dedicated path %d, reset backend %d, tx %d, rx %d,"
           " concurrency session%s allowed",
           __func__, platform_stdev_is_dedicated_sva_path(stdev->platform),
@@ -5930,6 +6002,7 @@ void platform_stdev_disable_stale_devices
     sound_trigger_device_t *stdev = my_data->stdev;
     char st_device_name[DEVICE_NAME_MAX_SIZE] = {0};
 
+    bool dev_disabled = false;
     /*
      * There can be stale devices while exec_mode is NONE with the
      * below usecase:
@@ -5954,8 +6027,11 @@ void platform_stdev_disable_stale_devices
                                                   st_device_name);
                 ATRACE_END();
                 --(stdev->dev_enable_cnt[i]);
+                dev_disabled = true;
             }
         }
+        if (!dev_disabled)
+            stdev->disable_stale = true;
         pthread_mutex_unlock(&stdev->ref_cnt_lock);
     }
 }
@@ -6485,4 +6561,11 @@ int platform_stdev_derive_mixer_ctl_from_backend
     strlcat(mixer_ctl_name, my_data->backend_dai_name, MIXER_PATH_MAX_LENGTH);
 
     return 0;
+}
+
+bool platform_is_best_channel_index_supported(void* platform)
+{
+    struct platform_data *my_data = (struct platform_data *)platform;
+
+    return my_data->enable_best_channel_idx;
 }
