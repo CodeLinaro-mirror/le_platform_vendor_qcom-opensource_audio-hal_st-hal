@@ -3664,7 +3664,7 @@ static void platform_stdev_send_adm_app_type_cfg(void *platform)
     struct mixer_ctl *ctl;
     struct listnode *p_node, *temp_node;
     struct adm_cfg_info *cfg_info;;
-    int app_type_cfg[ST_MAX_LENGTH_MIXER_CONTROL] = {-1};
+    long app_type_cfg[ST_MAX_LENGTH_MIXER_CONTROL] = {-1};
     int i, len = 0, num_app_types = 0;
     bool update;
 
@@ -3726,7 +3726,7 @@ static void platform_stdev_send_adm_app_type_cfg(void *platform)
     struct mixer_ctl *ctl;
     struct listnode *p_node, *temp_node;
     struct adm_cfg_info *cfg_info;;
-    int app_type_cfg[ST_MAX_LENGTH_MIXER_CONTROL] = {-1};
+    long app_type_cfg[ST_MAX_LENGTH_MIXER_CONTROL] = {-1};
     int i, len = 0, num_app_types = 0;
     bool update;
 
@@ -5124,9 +5124,10 @@ bool platform_stdev_check_and_update_concurrency
              ((!stdev->conc_voice_call_supported && stdev->conc_voice_active) ||
               (!stdev->conc_voip_call_supported && stdev->conc_voip_active))))
             concurrency_ses_allowed = false;
-    } else {
-        /* handle CAPTURE_STREAM events */
-        ALOGI("%s: Received STREAM event, event type %d, usecase type %d",
+    } else if (event_type == AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE ||
+               event_type == AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE) {
+        /* handle PLAYBACK_STREAM events */
+        ALOGI("%s: Received PLAYBACK_STREAM event, event type %d, usecase type %d",
               __func__, event_type, config->u.usecase.type);
         switch (event_type) {
             case AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE:
@@ -5139,17 +5140,61 @@ bool platform_stdev_check_and_update_concurrency
             default:
                 break;
         }
-        if (event_type == AUDIO_EVENT_PLAYBACK_STREAM_ACTIVE ||
-            event_type == AUDIO_EVENT_PLAYBACK_STREAM_INACTIVE) {
-            if (stdev->rx_concurrency_disabled &&
-                stdev->rx_concurrency_active > 0 &&
-                num_sessions > stdev->rx_conc_max_st_ses)
-                concurrency_ses_allowed = false;
-        }
+        if (stdev->rx_concurrency_disabled &&
+            stdev->rx_concurrency_active > 0 &&
+            num_sessions > stdev->rx_conc_max_st_ses)
+            concurrency_ses_allowed = false;
+
         if (concurrency_ses_allowed)
             concurrency_ses_allowed = stdev->session_allowed;
-    }
+    } else if (event_type == AUDIO_EVENT_CAPTURE_STREAM_ACTIVE ||
+               event_type == AUDIO_EVENT_CAPTURE_STREAM_INACTIVE) {
+        /* handle CAPTURE_STREAM events */
+        /*
+         * This handling is required in case of voice/voip call and
+         * audio-record are active. And one of the usecases stops then
+         * only stream capture events will be posted to ST HAL as
+         * shared device is still active. So we need to update the
+         * concurrency support depending on concurrency related flags.
+         */
+        ALOGI("%s: Received CAPTURE_STREAM event, event type %d, usecase type %d",
+              __func__, event_type, config->u.usecase.type);
 
+        switch (event_type) {
+            case AUDIO_EVENT_CAPTURE_STREAM_ACTIVE:
+                switch (config->u.usecase.type) {
+                    case USECASE_TYPE_VOICE_CALL:
+                        stdev->conc_voice_active = true;
+                        break;
+                    case USECASE_TYPE_VOIP_CALL:
+                        stdev->conc_voip_active = true;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case AUDIO_EVENT_CAPTURE_STREAM_INACTIVE:
+                switch (config->u.usecase.type) {
+                    case USECASE_TYPE_VOICE_CALL:
+                        stdev->conc_voice_active = false;
+                        break;
+                    case USECASE_TYPE_VOIP_CALL:
+                        stdev->conc_voip_active = false;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            default:
+                break;
+        }
+        if ((!stdev->conc_capture_supported &&
+             stdev->tx_concurrency_active > 0) ||
+            (stdev->conc_capture_supported &&
+             ((!stdev->conc_voice_call_supported && stdev->conc_voice_active) ||
+              (!stdev->conc_voip_call_supported && stdev->conc_voip_active))))
+                   concurrency_ses_allowed = false;
+    }
     ALOGD("%s: dedicated path %d, reset backend %d, tx %d, rx %d,"
           " concurrency session%s allowed",
           __func__, platform_stdev_is_dedicated_sva_path(stdev->platform),
@@ -5843,7 +5888,7 @@ int platform_stdev_send_stream_app_type_cfg
     struct platform_data *my_data = (struct platform_data *)platform;
     sound_trigger_device_t *stdev = my_data->stdev;
     char mixer_ctl_name[ST_MAX_LENGTH_MIXER_CONTROL];
-    int app_type_cfg[ST_MAX_LENGTH_MIXER_CONTROL] = {0};
+    long app_type_cfg[ST_MAX_LENGTH_MIXER_CONTROL] = {0};
     int len = 0;
     struct mixer_ctl *ctl;
     int status = 0, acdb_id;
