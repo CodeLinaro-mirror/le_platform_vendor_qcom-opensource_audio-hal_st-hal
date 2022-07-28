@@ -45,6 +45,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define LOG_TAG "sound_trigger_hw"
 #define ATRACE_TAG (ATRACE_TAG_HAL)
@@ -808,7 +810,8 @@ static void handle_audio_concurrency(audio_event_type_t event_type,
         if (event_type == AUDIO_EVENT_CAPTURE_DEVICE_INACTIVE &&
             !platform_stdev_is_dedicated_sva_path(stdev->platform) &&
             platform_stdev_backend_reset_allowed(stdev->platform))
-            platform_stdev_disable_stale_devices(stdev->platform);
+            if (stdev->tx_concurrency_active == 0)
+                platform_stdev_disable_stale_devices(stdev->platform);
         pthread_mutex_unlock(&stdev->lock);
         return;
     }
@@ -2698,7 +2701,12 @@ static int stdev_close(hw_device_t *device)
     ATRACE_BEGIN("sthal: stdev_close");
 
     pthread_mutex_lock(&stdev_init_lock);
-    if (!st_device || (--stdev_ref_cnt != 0)) {
+    if (!st_device) {
+        goto exit;
+    }
+    if (--stdev_ref_cnt != 0) {
+        ALOGD("%s: Exit device=%p cnt=%d ", __func__, st_device,
+            stdev_ref_cnt);
         goto exit;
     }
 
@@ -2743,8 +2751,6 @@ static int stdev_close(hw_device_t *device)
 exit:
     pthread_mutex_unlock(&stdev_init_lock);
     ATRACE_END();
-    ALOGD("%s: Exit device=%p cnt=%d ", __func__, st_device,
-        stdev_ref_cnt);
     return 0;
 }
 
