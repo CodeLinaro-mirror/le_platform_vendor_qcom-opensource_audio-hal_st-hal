@@ -53,7 +53,11 @@
 #include "st_second_stage.h"
 
 #ifdef LINUX_ENABLED
+#ifdef ST_DEFERRED_STOP_ENABLED
+#define ST_SES_DEFERRED_STOP_DELAY_MS 1000
+#else
 #define ST_SES_DEFERRED_STOP_DELAY_MS 0
+#endif
 #define ST_SES_DEFERRED_STOP_SS_DELAY_MS 0
 #else
 #define ST_SES_DEFERRED_STOP_DELAY_MS 1000

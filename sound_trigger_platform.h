@@ -41,6 +41,15 @@
 struct sound_trigger_device;
 
 #define PCM_DEVICE_FILE "/proc/asound/pcm"
+#define LIB_ALM "libalm.so"
+
+/* AI-based feature license IDs for far-field EC/NS
+ * and keyword detection for QCS40X.
+ */
+#define FFV_6MIC_FEATUREID              900
+#define FFV_4MIC_FEATUREID              901
+#define FFV_3MIC_FEATUREID              902
+#define FFV_2MIC_FEATUREID              903
 
 #define MIXER_PATH_MAX_LENGTH 128
 #define MIXER_FILE_EXT ".xml"
@@ -60,6 +69,13 @@ struct sound_trigger_device;
 #define LIB_ACDB_LOADER "libacdbloader.so"
 #endif
 
+#ifdef DAEMON_SUPPORT_AUTO
+#define LIB_ACDB_LOADER "libacdbloaderclient.so"
+#else
+#define LIB_ACDB_LOADER "libacdbloader.so"
+#endif
+
+#define LIB_ADPCM_DECODER "libadpcmdec.so"
 #define LIB_MULAW_DECODER "libmulawdec.so"
 #define LIB_SVA_SOUNDMODEL "liblistensoundmodel2.so"
 
@@ -745,5 +761,12 @@ int platform_stdev_derive_mixer_ctl_from_backend
 bool platform_is_best_channel_index_supported
 (
     void* platform
+);
+
+void platform_stdev_send_ffecns_freeze_event
+(
+    void *platform,
+    st_profile_type_t profile_type,
+    bool freeze
 );
 #endif /* SOUND_TRIGGER_PLATFORM_H */

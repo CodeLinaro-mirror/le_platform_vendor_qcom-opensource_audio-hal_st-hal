@@ -1191,6 +1191,12 @@ static void *callback_thread_loop(void *context)
         case LSM_VOICE_WAKEUP_STATUS_RUNNING:
             continue;
         case LSM_VOICE_WAKEUP_STATUS_DETECTED:
+            /* Check if IMC freeze event needs to be sent */
+            if (p_lsm_ses->common.lab_enabled) {
+                platform_stdev_send_ffecns_freeze_event(p_lsm_ses->common.stdev->platform,
+                    get_profile_type(&p_lsm_ses->common), true /* freeze */);
+            }
+
             /*
              * Currently, DSP does not support the inclusion of detection
              * timestamp within the payload. So the timestamp is filled here

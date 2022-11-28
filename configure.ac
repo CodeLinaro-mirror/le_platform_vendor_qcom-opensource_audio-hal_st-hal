@@ -43,12 +43,18 @@ AC_ARG_WITH(sanitized-headers,
                 [Specify the location of the sanitized Linux headers]),
         [CPPFLAGS="$CPPFLAGS -idirafter $withval"])
 
+AC_ARG_WITH(audio-kernel-headers,
+        AS_HELP_STRING([--with-audio-kernel-headers=DIR],[Specify locaiton of kernel audio headers]),
+        [CFLAGS="$CFLAGS -idirafter $withval"])
+
 AM_CONDITIONAL([QSTHW_API],[test x$BOARD_SUPPORTS_QSTHW_API = xtrue])
 AM_CONDITIONAL([TEST_APP],[test x$BUILD_APP = xtrue])
+AM_CONDITIONAL([SOUND_TRIGGER_ARM],[test x$BOARD_SUPPORTS_SOUND_TRIGGER_ARM = xtrue])
 AM_CONDITIONAL([USE_KEEP_ALIVE],[test x$ENABLE_KEEP_ALIVE = xtrue])
 AM_CONDITIONAL([SOUND_TRIGGER_CPU_AFFINITY_SET],[test x$BOARD_SUPPORTS_SOUND_TRIGGER_CPU_AFFINITY_SET = xtrue])
 AM_CONDITIONAL([SOUND_TRIGGER_DEVICE_API_VERSION_1_0],[test x$SUPPORTS_SOUND_TRIGGER_DEVICE_API_VERSION_1_0 = xtrue])
 AM_CONDITIONAL([SOUND_TRIGGER_APE],[test x$SUPPORTS_SOUND_TRIGGER_APE = xtrue])
+AM_CONDITIONAL([SOUND_TRIGGER_TRANSITION],[test x$SOUND_TRIGGER_FEATURE_LPMA_ENABLED = xtrue])
 
 AC_ARG_WITH([glib],
       AC_HELP_STRING([--with-glib],
@@ -81,6 +87,13 @@ AC_ARG_ENABLE([feature_sva_multistage],
                      [enable sva multistage feature]),
                      [MULTI_STAGE_ENABLED=yes], [MULTI_STAGE_ENABLED=no])
 AM_CONDITIONAL([ST_MULTI_STAGE_ENABLED],[test x$MULTI_STAGE_ENABLED = xyes])
+
+AC_ARG_ENABLE([deferred_stop],
+      AC_HELP_STRING([--enable-deferred_stop],
+         [enable deferred stop]),
+         [DEFERRED_STOP_ENABLED=yes], [DEFERRED_STOP_ENABLED=no])
+
+AM_CONDITIONAL([ST_DEFERRED_STOP_ENABLED],[test x$DEFERRED_STOP_ENABLED = xyes])
 
 AC_CONFIG_FILES([ \
         Makefile \

@@ -157,6 +157,7 @@ typedef unsigned char __u8;
 #define ST_PARAM_KEY_LPI_ENABLE "lpi_enable"
 #define ST_PARAM_KEY_VAD_ENABLE "vad_enable"
 #define ST_PARAM_KEY_DEDICATED_SVA_PATH "dedicated_sva_path"
+#define ST_PARAM_KEY_SEND_FFECNS_FREEZE_EVENT "send_freeze_event"
 #define ST_PARAM_KEY_DEDICATED_HEADSET_PATH "dedicated_headset_path"
 #define ST_PARAM_KEY_ENABLE_DEBUG_DUMPS "enable_debug_dumps"
 #define ST_PARAM_KEY_DAM_TOKEN_ID "dam_token_id"
@@ -354,6 +355,8 @@ typedef enum {
 } st_xml_tags_t;
 
 typedef void (*st_xml_process_fn)(void *platform, const XML_Char **attr);
+typedef int (*alm_check_license_t)(unsigned int feature_id);
+
 static void platform_stdev_process_kv_params(void *platform, const XML_Char **attr);
 static void process_stdev_acdb_metainfo_key(void *platform, const XML_Char **attr);
 
@@ -426,6 +429,11 @@ struct platform_data {
     char xml_file_path[MIXER_PATH_MAX_LENGTH];
 
     bool enable_best_channel_idx;
+    void* alm_handle;
+    alm_check_license_t verify_haven_license;
+
+    bool send_freeze_event;
+    bool imc_freeze;
 };
 
 
@@ -458,6 +466,49 @@ static void platform_stdev_get_vendor_config_path(char* config_file_path, int pa
 static void get_xml_file_path(char* path, const char* file_name, const char* vendor_path)
 {
     snprintf(path, MIXER_PATH_MAX_LENGTH, "%s/%s", vendor_path, file_name);
+};
+
+static bool check_haven_license
+(
+   struct platform_data *my_data,
+   bool lpi_enable,
+   st_profile_type_t profile_type,
+   int channel_count
+)
+{
+    int ret = 0;
+    unsigned int feature_id = 0;
+
+    if (NULL != my_data->alm_handle) {
+        if (lpi_enable || (profile_type == ST_PROFILE_TYPE_FFECNS)) {
+            ALOGD("%s: Verifying license...", __func__);
+            switch (channel_count) {
+            case SOUND_TRIGGER_CHANNEL_MODE_HEX:
+                feature_id = FFV_6MIC_FEATUREID;
+                break;
+            case SOUND_TRIGGER_CHANNEL_MODE_QUAD:
+                feature_id = FFV_4MIC_FEATUREID;
+                break;
+            case SOUND_TRIGGER_CHANNEL_MODE_TRI:
+                feature_id = FFV_3MIC_FEATUREID;
+                break;
+            case SOUND_TRIGGER_CHANNEL_MODE_STEREO:
+                feature_id = FFV_2MIC_FEATUREID;
+                break;
+            default:
+                ALOGD("%s: Channel count(%d) not applicable to this feature",
+                      __func__, channel_count);
+                return true;
+            }
+            ret = my_data->verify_haven_license(feature_id);
+            if (ret) {
+                ALOGE("%s: Haven License Failed error = %d", __func__, ret);
+                return false;
+            }
+        }
+    }
+    ALOGD("%s: Haven License Success", __func__);
+    return true;
 }
 
 static int load_soundmodel_lib(sound_trigger_device_t *stdev)
@@ -589,6 +640,25 @@ cleanup:
     if (my_data->acdb_handle) {
         dlclose(my_data->acdb_handle);
         my_data->acdb_handle = NULL;
+    }
+    return status;
+}
+
+static int load_haven_lib(struct platform_data *my_data)
+{
+    int status = 0;
+
+    my_data->alm_handle = dlopen(LIB_ALM, RTLD_NOW);
+    if (!my_data->alm_handle) {
+        ALOGW("%s: ERROR. %s", __func__, dlerror());
+        return -ENODEV;
+    }
+
+    DLSYM(my_data->alm_handle, my_data->verify_haven_license,
+          alm_check_license, status);
+    if (status) {
+        dlclose(my_data->alm_handle);
+        my_data->alm_handle = NULL;
     }
     return status;
 }
@@ -761,6 +831,9 @@ static void platform_stdev_set_default_config(struct platform_data *platform)
     platform->be_dai_name_table = NULL;
     platform->max_be_dai_names = 0;
     platform->lpma_cfg.num_bb_ids = 0;
+
+    platform->send_freeze_event = false;
+    platform->imc_freeze = false;
 
     set_default_backend_type();
 }
@@ -3337,6 +3410,8 @@ static void query_stdev_platform(struct platform_data *my_data,
                  strstr(snd_card_name, "msm8937-tasha") ||
                  strstr(snd_card_name, "sdm660-tasha") ||
                  strstr(snd_card_name, "sdm670-tasha") ||
+                 strstr(snd_card_name, "trinket-tasha") ||
+                 strstr(snd_card_name, "trinket-tashalite") ||
                  strstr(snd_card_name, "apq8009-tashalite")) {
         get_xml_file_path(my_data->xml_file_path, MIXER_PATH_FILE_NAME_WCD9335,
             my_data->vendor_config_path);
@@ -3427,6 +3502,7 @@ static void query_stdev_platform(struct platform_data *my_data,
         strstr(snd_card_name, "sdm660") ||
         strstr(snd_card_name, "sdm670") ||
         strstr(snd_card_name, "sm6150") ||
+        strstr(snd_card_name, "trinket") ||
         strstr(snd_card_name, "qcs605-lc") ||
         strstr(snd_card_name, "msm8x16")) &&
         !strstr(snd_card_name, "msm8976-tasha") &&
@@ -3440,6 +3516,8 @@ static void query_stdev_platform(struct platform_data *my_data,
         !strstr(snd_card_name, "sdm670-tasha") &&
         !strstr(snd_card_name, "sdm670-tavil") &&
         !strstr(snd_card_name, "sm6150-tavil") &&
+        !strstr(snd_card_name, "trinket-tasha") &&
+        !strstr(snd_card_name, "trinket-tavil") &&
         !strstr(snd_card_name, "apq8009-tasha") &&
         !strstr(snd_card_name, "msm8939-tomtom")) {
         my_data->stdev->sw_mad = true;
@@ -4278,6 +4356,10 @@ void *platform_stdev_init(sound_trigger_device_t *stdev)
 
     init_be_dai_name_table(my_data);
 
+    ret = load_haven_lib(my_data);
+    if (ret)
+        ALOGW("%s: Loading Haven Library failed !!!", __func__);
+
     platform_stdev_reset_backend_cfg(my_data);
 
     return my_data;
@@ -4383,6 +4465,8 @@ void platform_stdev_deinit(void *platform)
 
         my_data->acdb_deinit();
         dlclose(my_data->acdb_handle);
+        if (my_data->alm_handle)
+            dlclose(my_data->alm_handle);
         if (my_data->stdev->smlib_handle)
             dlclose(my_data->stdev->smlib_handle);
         if (my_data->stdev->mulaw_dec_lib_handle)
@@ -4577,6 +4661,11 @@ static int get_st_device
             } else {
                 channel_count = my_data->codec_backend_cfg.channel_count;
             }
+
+            if (!check_haven_license(my_data, my_data->stdev->lpi_enable,
+                                     v_info->profile_type, channel_count))
+                break;
+
             if (channel_count == SOUND_TRIGGER_CHANNEL_MODE_OCT) {
                 if (my_data->stdev->lpi_enable)
                     st_device = ST_DEVICE_HANDSET_8MIC_LPI;
@@ -6573,4 +6662,48 @@ bool platform_is_best_channel_index_supported(void* platform)
     struct platform_data *my_data = (struct platform_data *)platform;
 
     return my_data->enable_best_channel_idx;
+}
+
+void platform_stdev_send_ffecns_freeze_event
+(
+    void *platform,
+    st_profile_type_t profile_type,
+    bool freeze
+)
+{
+    struct platform_data *my_data = (struct platform_data *)platform;
+    sound_trigger_device_t *stdev = my_data->stdev;
+    const char *mixer_ctl_name = "FFECNS Freeze Event";
+    struct mixer_ctl *ctl;
+
+    if (!my_data->send_freeze_event) {
+        ALOGV("%s: No requirement to send imc event", __func__);
+        return;
+    }
+
+    ctl = mixer_get_ctl_by_name(stdev->mixer, mixer_ctl_name);
+    if (!ctl) {
+        ALOGE("%s: ERROR. Could not get ctl for mixer cmd - %s",
+              __func__, mixer_ctl_name);
+        return;
+    }
+
+    /* trigger mixer control to send freeze or unfreeze here */
+    if (freeze && (profile_type == ST_PROFILE_TYPE_FFECNS)) {
+        ALOGD("%s: Send freeze command", __func__);
+        my_data->imc_freeze = true;
+        if (mixer_ctl_set_value(ctl, 0, my_data->imc_freeze) < 0) {
+            ALOGE("%s: Could not set freeze command %d",
+                            __func__, my_data->imc_freeze);
+            return;
+        }
+    } else if (!freeze && my_data->imc_freeze == true) {
+        ALOGD("%s: Send unfreeze command", __func__);
+        my_data->imc_freeze = false;
+        if (mixer_ctl_set_value(ctl, 0, my_data->imc_freeze) < 0) {
+            ALOGE("%s: Could not set unfreeze command %d",
+                            __func__, my_data->imc_freeze);
+            return;
+        }
+    }
 }
