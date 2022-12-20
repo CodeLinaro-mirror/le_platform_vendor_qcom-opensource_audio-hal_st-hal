@@ -37,6 +37,11 @@ AM_CFLAGS += -DST_MULTI_STAGE_ENABLED
 AM_CFLAGS += -I $(top_srcdir)/ext_headers
 endif
 
+if SOUND_TRIGGER_TRANSITION
+c_sources += sound_trigger_transition.c
+AM_CFLAGS += -DST_TRANSITION_ENABLED
+endif
+
 if USE_KEEP_ALIVE
 AM_CFLAGS += -DUSE_KEEP_ALIVE
 endif
@@ -51,6 +56,23 @@ endif
 
 if SOUND_TRIGGER_APE
 AM_CFLAGS += -DST_APE
+endif
+
+if SOUND_TRIGGER_ARM
+c_sources += st_hw_session_pcm.c
+AM_CFLAGS += -DST_ARM_ENABLED \
+             -I $(PKG_CONFIG_SYSROOT_DIR)/usr/include/ffv/ \
+             -I $(PKG_CONFIG_SYSROOT_DIR)/usr/include/esp/
+endif
+
+if ST_MULTI_STAGE_ENABLED
+c_sources += st_second_stage.c
+AM_CFLAGS += -DST_MULTI_STAGE_ENABLED
+AM_CFLAGS += -I $(top_srcdir)/ext_headers
+endif
+
+if ST_DEFERRED_STOP_ENABLED
+AM_CFLAGS += -DST_DEFERRED_STOP_ENABLED
 endif
 
 lib_includedir = $(includedir)/sound_trigger
