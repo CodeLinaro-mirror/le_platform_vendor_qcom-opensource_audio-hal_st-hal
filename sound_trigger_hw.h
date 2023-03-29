@@ -309,7 +309,7 @@ do {\
     }\
 } while (0)
 
-int dbg_trace_max_lab_reads;
+extern int dbg_trace_max_lab_reads;
 #define ST_DBG_ATRACE_ASYNC_BEGIN_IF(cond, name, cookie)\
 do {\
     if (cond) ATRACE_ASYNC_BEGIN(name, cookie);\
