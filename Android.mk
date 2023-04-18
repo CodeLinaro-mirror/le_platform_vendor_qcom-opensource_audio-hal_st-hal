@@ -68,6 +68,7 @@ endif
 LOCAL_C_INCLUDES += \
     external/tinyalsa/include \
     external/expat/lib \
+    vendor/qcom/opensource/audio-hal/primary-hal/hal/audio_extn \
     $(call include-path-for, audio-route) \
     $(LOCAL_PATH)/st_extn
 ifeq ($(call is-platform-sdk-version-at-least,28),true)   #Android P and above
