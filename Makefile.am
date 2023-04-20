@@ -9,6 +9,7 @@ AM_CFLAGS = -Wundef \
         -fno-inline \
         -fno-short-enums \
         -fpic \
+        -fcommon \
         $(TINYALSA_CFLAGS) \
         $(HARDWARE_CFLAGS) \
         $(SYSTEM_MEDIA_CFLAGS) \
