@@ -1,3 +1,5 @@
+ifneq ($(TARGET_IS_HEADLESS),true)
+
 ifeq ($(strip $(BOARD_SUPPORTS_OPENSOURCE_STHAL)),true)
 
 LOCAL_PATH := $(call my-dir)
@@ -140,3 +142,5 @@ include $(BUILD_SHARED_LIBRARY)
 #include $(BUILD_EXECUTABLE)
 
 endif
+
+endif #TARGET_IS_HEADLESS
