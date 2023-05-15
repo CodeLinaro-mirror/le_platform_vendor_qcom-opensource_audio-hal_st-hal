@@ -212,7 +212,7 @@ typedef int  (*acdb_loader_send_listen_lsm_cal_t)(int, int, int, int);
 typedef int  (*acdb_loader_send_listen_lsm_cal_v1_t)(int, int, int, int, int);
 typedef int  (*acdb_loader_get_calibration_t)(char *, int, void *);
 typedef int  (*acdb_loader_get_audio_cal_t) (void *, void *, unsigned int*);
-typedef int  (*acdb_loader_send_common_custom_topology_t)();
+typedef int  (*acdb_loader_send_common_custom_topology_t)(void);
 
 struct st_device_index
 st_device_name_idx[ST_EXEC_MODE_MAX][ST_DEVICE_MAX] = {
@@ -3482,6 +3482,13 @@ static void query_stdev_platform(struct platform_data *my_data,
     if (!strncmp(snd_card_name, "sm6150-wcd9375qrd-snd-card",
         sizeof("sm6150-wcd9375qrd-snd-card"))) {
         get_xml_file_path(my_data->xml_file_path, MIXER_PATH_FILE_NAME,
+            my_data->vendor_config_path);
+        strlcpy(mixer_path_xml, my_data->xml_file_path, MIXER_PATH_MAX_LENGTH);
+    }
+
+    if (!strncmp(snd_card_name, "kona-iot-vc-snd-card",
+        sizeof("kona-iot-vc-snd-card"))) {
+        get_xml_file_path(my_data->xml_file_path, MIXER_PATH_FILE_NAME_KONA_IOT_VC,
             my_data->vendor_config_path);
         strlcpy(mixer_path_xml, my_data->xml_file_path, MIXER_PATH_MAX_LENGTH);
     }

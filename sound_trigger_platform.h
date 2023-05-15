@@ -62,6 +62,7 @@ struct sound_trigger_device;
 #define PLATFORM_PATH_XML "sound_trigger_platform_info.xml"
 #define MIXER_PATH_FILE_NAME_WCD9340 "sound_trigger_mixer_paths_wcd9340"
 #define MIXER_PATH_FILE_NAME_BG "sound_trigger_mixer_paths_bg"
+#define MIXER_PATH_FILE_NAME_KONA_IOT_VC "sound_trigger_mixer_paths_iot_vc"
 
 #ifdef DAEMON_SUPPORT_AUTO
 #define LIB_ACDB_LOADER "libacdbloaderclient.so"
