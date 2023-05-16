@@ -9,6 +9,7 @@ AM_CFLAGS = -Wundef \
         -fno-inline \
         -fno-short-enums \
         -fpic \
+        -fcommon \
         $(TINYALSA_CFLAGS) \
         $(HARDWARE_CFLAGS) \
         $(SYSTEM_MEDIA_CFLAGS) \
@@ -29,12 +30,6 @@ if QSTHW_API
 c_sources += st_extn/st_hw_extn_intf.c
 c_sources += st_extn/st_hw_extn.c
 AM_CFLAGS += -DST_EXTN_ENABLED
-endif
-
-if ST_MULTI_STAGE_ENABLED
-c_sources += st_second_stage.c
-AM_CFLAGS += -DST_MULTI_STAGE_ENABLED
-AM_CFLAGS += -I $(top_srcdir)/ext_headers
 endif
 
 if SOUND_TRIGGER_TRANSITION
