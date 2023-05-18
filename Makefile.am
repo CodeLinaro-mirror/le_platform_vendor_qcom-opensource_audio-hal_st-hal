@@ -70,6 +70,10 @@ if ST_DEFERRED_STOP_ENABLED
 AM_CFLAGS += -DST_DEFERRED_STOP_ENABLED
 endif
 
+if ENABLE_AUDIO_LEGACY_TECHPACK
+AM_CFLAGS += -DENABLE_SVA_MIXER_CTL
+endif
+
 lib_includedir = $(includedir)/sound_trigger
 lib_include_HEADERS = sound_trigger_prop_intf.h sound_trigger_hw.h
 
