@@ -17,6 +17,10 @@ endif
 
 LOCAL_CFLAGS += -Wall -Werror
 
+ifeq ($(ENABLE_AUDIO_LEGACY_TECHPACK), true)
+  LOCAL_CFLAGS += -DENABLE_SVA_MIXER_CTL
+endif
+
 LOCAL_SRC_FILES := \
     sound_trigger_hw.c \
     sound_trigger_platform.c \
@@ -64,6 +68,7 @@ endif
 LOCAL_C_INCLUDES += \
     external/tinyalsa/include \
     external/expat/lib \
+    vendor/qcom/opensource/audio-hal/primary-hal/hal/audio_extn \
     $(call include-path-for, audio-route) \
     $(LOCAL_PATH)/st_extn
 ifeq ($(call is-platform-sdk-version-at-least,28),true)   #Android P and above
