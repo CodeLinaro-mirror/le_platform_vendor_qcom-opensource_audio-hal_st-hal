@@ -1277,6 +1277,28 @@ int lsm_get_det_event_info_control(struct mixer * st_mixer, void *arg)
 
     return 0;
 }
+
+int lsm_get_status_info_control(struct mixer * st_mixer, void *arg)
+{
+    struct mixer_ctl *ctl = NULL;
+    const char *mixer_ctl_name = "LSM_GET_STATUS_V3_INFO";
+
+    struct snd_lsm_event_status_v3 *params = (struct snd_lsm_event_status_v3 *)arg;
+
+    ctl = mixer_get_ctl_by_name(st_mixer, mixer_ctl_name);
+    if (!ctl) {
+        ALOGE("%s: Could not get ctl for mixer cmd - %s",
+                __func__, mixer_ctl_name);
+    }
+
+    if (mixer_ctl_get_array(ctl, params, params->payload_size + sizeof(*params)) < 0) {
+        ALOGE("%s: Could not get det event info", __func__);
+        return -EFAULT;
+    }
+
+    return 0;
+}
+
 #endif
 
 static void *callback_thread_loop(void *context)
@@ -1335,10 +1357,15 @@ static void *callback_thread_loop(void *context)
         pthread_mutex_unlock(&p_lsm_ses->callback_thread_lock);
 #ifdef ENABLE_SVA_MIXER_CTL
         cdev_query->fd = p_lsm_ses->pcm_id;
-        status = ioctl(lsm_cdev, SNDRV_LSM_GENERIC_DET_EVENT, cdev_query);
-
-        if (cdev_query->det_status == LSM_VOICE_WAKEUP_STATUS_DETECTED)
-            status = lsm_get_det_event_info_control(st_mixer, params_status);
+        status = ioctl(lsm_cdev, request, cdev_query);
+        ALOGD("%s: cdev_query status: %d", __func__, status);
+        if ((status >= 0) && (cdev_query->det_status == LSM_VOICE_WAKEUP_STATUS_DETECTED)) {
+            if (p_lsm_ses->common.is_generic_event) {
+                status = lsm_get_det_event_info_control(st_mixer, params_status);
+            } else {
+                status = lsm_get_status_info_control(st_mixer, params);
+            }
+        }
 #else
         if (p_lsm_ses->common.is_generic_event)
             status = pcm_ioctl(p_lsm_ses->pcm, request, &params->status);
