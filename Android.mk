@@ -81,13 +81,15 @@ LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
 LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include/audio
 LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/techpack/audio/include
 
-ifeq ($(TARGET_BOARD_AUTO),true)
+#ifeq ($(TARGET_BOARD_AUTO),true)
 LOCAL_HEADER_LIBRARIES += libgcs_headers
 LOCAL_HEADER_LIBRARIES += libgcs-osal_headers
-endif
+#endif
 
 ifeq ($(ENABLE_AUDIO_LEGACY_TECHPACK),true)
 LOCAL_HEADER_LIBRARIES += qti_legacy_audio_kernel_uapi
+LOCAL_HEADER_LIBRARIES += libgraphite_client_gcs_headers
+LOCAL_HEADER_LIBRARIES += libgraphite_client_osal_headers
 endif
 
 LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
