@@ -28,7 +28,12 @@ LOCAL_SRC_FILES := \
     st_hw_session_lsm.c \
     st_hw_session_gcs.c \
     st_hw_common.c \
-    st_buffering.c
+    st_buffering.c \
+    listen_hidl_service.cpp
+
+#ifeq ($(strip $(AUDIO_FEATURE_ENABLED_LSM_HIDL)),true)
+#    LOCAL_SRC_FILES += listen_hidl_service.cpp
+#endif
 
 ifeq ($(strip $(BOARD_SUPPORTS_QSTHW_API)),true)
     LOCAL_CFLAGS += -DST_EXTN_ENABLED
@@ -87,6 +92,9 @@ LOCAL_HEADER_LIBRARIES += libgcs_headers
 LOCAL_HEADER_LIBRARIES += libgcs-osal_headers
 #endif
 
+LOCAL_HEADER_LIBRARIES += \
+    libhidlbase_headers
+
 ifeq ($(ENABLE_AUDIO_LEGACY_TECHPACK),true)
 LOCAL_HEADER_LIBRARIES += qti_legacy_audio_kernel_uapi
 LOCAL_HEADER_LIBRARIES += libgraphite_client_gcs_headers
@@ -110,7 +118,12 @@ LOCAL_SHARED_LIBRARIES := \
     libaudioroute \
     libdl \
     libexpat \
+    libhidlbase \
+    libhidltransport \
+    libutils \
     libhardware_legacy
+
+
 
 LOCAL_MODULE := sound_trigger.primary.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_RELATIVE_PATH := hw
@@ -118,6 +131,16 @@ LOCAL_MODULE_OWNER := qti
 LOCAL_MODULE_TAGS := optional
 LOCAL_VENDOR_MODULE := true
 LOCAL_MULTILIB := $(AUDIOSERVER_MULTILIB)
+
+#ifeq ($(strip $(AUDIO_FEATURE_ENABLED_LSM_HIDL)),true)
+LOCAL_HEADER_LIBRARIES += liblisten_headers
+
+LOCAL_SHARED_LIBRARIES += \
+    vendor.qti.hardware.ListenSoundModel@1.0-impl \
+    vendor.qti.hardware.ListenSoundModel@1.0
+
+LOCAL_CFLAGS += -DLSM_HIDL_ENABLED
+#endif
 
 include $(BUILD_SHARED_LIBRARY)
 

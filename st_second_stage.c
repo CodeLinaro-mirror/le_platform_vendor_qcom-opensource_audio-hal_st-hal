@@ -34,39 +34,9 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /*
-* Changes from Qualcomm Technologies, Inc. are provided under the following license:
-* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
-* SPDX-License-Identifier: BSD-3-Clause-Clear
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted (subject to the limitations in the
-* disclaimer below) provided that the following conditions are met:
-*
-*    * Redistributions of source code must retain the above copyright
-*      notice, this list of conditions and the following disclaimer.
-*
-*    * Redistributions in binary form must reproduce the above
-*      copyright notice, this list of conditions and the following
-*      disclaimer in the documentation and/or other materials provided
-*      with the distribution.
-*
-*    * Neither the name of Qualcomm Innovation Center, Inc. nor the names of its
-*      contributors may be used to endorse or promote products derived
-*      from this software without specific prior written permission.
-*
-* NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE
-* GRANTED BY THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT
-* HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-* WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-* IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-* GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-* INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
-* IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-* OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
-* IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
 */
 #define LOG_TAG "sound_trigger_hw:ss"
 #define ATRACE_TAG (ATRACE_TAG_HAL)
@@ -742,16 +712,28 @@ int st_second_stage_module_init(st_arm_second_stage_t *st_sec_stage,
     ss_session = st_sec_stage->ss_session;
     st_sec_stage->dump_fp = NULL;
 
+    ALOGE("%s st_sec_stage->ss_info->sm_detection_type = 0x%x \n",__func__,
+		  st_sec_stage->ss_info->sm_detection_type);
     /* Allocate extra pointers needed in the capi wrappers */
     if (st_sec_stage->ss_info->sm_detection_type ==
-        ST_SM_TYPE_KEYWORD_DETECTION)
+        ST_SM_TYPE_KEYWORD_DETECTION ||
+	st_sec_stage->ss_info->sm_detection_type ==
+	ST_SM_TYPE_NONE) {
+        ALOGE("%s ST_SM_TYPE_KEYWORD_DETECTION  \n",__func__);
         ss_session->capi_handle = calloc(1,
             sizeof(capi_v2_t) + sizeof(char *));
+    }
     else if (st_sec_stage->ss_info->sm_detection_type ==
-        ST_SM_TYPE_USER_VERIFICATION)
+        ST_SM_TYPE_USER_VERIFICATION) {
+        ALOGE("%s ST_SM_TYPE_USER_VERIFICATION \n",__func__);
         ss_session->capi_handle = calloc(1,
             sizeof(capi_v2_t) + (3 * sizeof(char *)));
+    }
     /* else TODO: ST_SM_TYPE_CUSTOM_DETECTION */
+    else if (st_sec_stage->ss_info->sm_detection_type ==
+        ST_SM_TYPE_CUSTOM_DETECTION) {
+        ALOGE("%s ST_SM_TYPE_CUSTOM_DETECTION, not habdled yet ! \n",__func__);
+    }
 
     if (!ss_session->capi_handle) {
         ALOGE("%s: failed to allocate ss_session->capi_handle", __func__);
