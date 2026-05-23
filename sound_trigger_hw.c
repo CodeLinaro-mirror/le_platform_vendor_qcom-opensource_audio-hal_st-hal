@@ -46,11 +46,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- *Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 #define LOG_TAG "sound_trigger_hw"
 #define ATRACE_TAG (ATRACE_TAG_HAL)
-/* #define LOG_NDEBUG 0 */
+#define LOG_NDEBUG 0
 #define LOG_NDDEBUG 0
 
 #include <errno.h>
@@ -77,6 +79,23 @@
 
 #define XSTR(x) STR(x)
 #define STR(x) #x
+
+//#ifdef __cplusplus
+//#ifdef LSM_HIDL_ENABLED
+#include "listen_hidl_service.h"
+//#include <hidl/HidlTransportSupport.h>
+//#include <hidl/LegacySupport.h>
+//#include <lsm_server_wrapper.h>
+//
+//#include <vendor/qti/hardware/ListenSoundModel/1.0/IListenSoundModel.h>
+//using vendor::qti::hardware::ListenSoundModel::V1_0::IListenSoundModel;
+//using vendor::qti::hardware::ListenSoundModel::V1_0::implementation::ListenSoundModel;
+//using android::hardware::defaultPassthroughServiceImplementation;
+//using android::sp;
+//using namespace android::hardware;
+//using android::OK;
+//#endif
+//#endif
 
 /* count of sound trigger hal clients */
 static unsigned int stdev_ref_cnt = 0;
@@ -2888,6 +2907,7 @@ static int stdev_open(const hw_module_t* module, const char* name,
         goto exit;
     }
 
+    ALOGD("%s: Checking existing stdev instance", __func__);
     pthread_mutex_lock(&stdev_init_lock);
     if (stdev_ref_cnt != 0) {
         *device = &stdev->device.common;
@@ -2906,6 +2926,16 @@ static int stdev_open(const hw_module_t* module, const char* name,
     }
 
     stdev->hw_properties = &hw_properties;
+
+//#ifdef LSM_HIDL_ENABLED
+    /* Register LSM Lib HIDL service */
+    ALOGD("%s: @@@ Register LSM HIDL service", __func__);
+    register_lsm_hidl_service();
+    //sp<IListenSoundModel> service = new ListenSoundModel();
+    //configureRpcThreadpool(32, false /*callerWillJoin*/);
+    //if(android::OK !=  service->registerAsService())
+    //    ALOGW("Could not register LSM HIDL service");
+//#endif
 
     status = load_audio_hal();
     if (status)
