@@ -34,9 +34,9 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /*
-* Changes from Qualcomm Innovation Center are provided under the following license:
-*
-* Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted (subject to the limitations in the
@@ -138,10 +138,12 @@ static int process_frame_keyword_detection(st_arm_ss_session_t *ss_session,
     if (result_cfg_ptr->is_detected) {
         *det_status = KEYWORD_DETECTION_SUCCESS;
         ss_session->exit_buffering = true;
-        ss_session->kw_start_idx = (result_cfg_ptr->start_position *
-            CNN_FRAME_SIZE) + ss_session->buf_start;
-        ss_session->kw_end_idx = (result_cfg_ptr->end_position *
-            CNN_FRAME_SIZE) + ss_session->buf_start;
+        ss_session->kw_start_idx = ss_session->buf_start +
+            (result_cfg_ptr->start_position > 0 ?
+            (uint32_t)((int64_t)result_cfg_ptr->start_position * CNN_FRAME_SIZE) : 0U);
+        ss_session->kw_end_idx = ss_session->buf_start +
+            (result_cfg_ptr->end_position > 0 ?
+            (uint32_t)((int64_t)result_cfg_ptr->end_position * CNN_FRAME_SIZE) : 0U);
     }
     ss_session->confidence_score = result_cfg_ptr->best_confidence;
 

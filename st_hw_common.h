@@ -29,6 +29,10 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
  * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include "sound_trigger_hw.h"
@@ -67,7 +71,7 @@ static inline uint64_t get_current_time_ns()
     struct timespec ts;
 
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (ts.tv_sec * NSECS_PER_SEC) + ts.tv_nsec;
+    return ((uint64_t)ts.tv_sec * (uint64_t)NSECS_PER_SEC) + (uint64_t)ts.tv_nsec;
 }
 
 static inline unsigned int convert_ms_to_bytes
@@ -76,7 +80,7 @@ static inline unsigned int convert_ms_to_bytes
     struct pcm_config *config
 )
 {
-    return ((input_ms * config->rate * config->channels *
+    return (unsigned int)(((uint64_t)input_ms * config->rate * config->channels *
         (pcm_format_to_bits(config->format) >> 3)) / 1000);
 }
 
@@ -86,6 +90,7 @@ static inline unsigned int convert_bytes_to_ms
     struct pcm_config *config
 )
 {
-    return ((input_bytes * 1000) / (config->rate * config->channels *
+    return (unsigned int)(((uint64_t)input_bytes * 1000) /
+        ((uint64_t)config->rate * config->channels *
         (pcm_format_to_bits(config->format) >> 3)));
 }
