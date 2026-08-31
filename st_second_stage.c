@@ -108,10 +108,12 @@ static int process_frame_keyword_detection(st_arm_ss_session_t *ss_session,
     if (result_cfg_ptr->is_detected) {
         *det_status = KEYWORD_DETECTION_SUCCESS;
         ss_session->exit_buffering = true;
-        ss_session->kw_start_idx = (result_cfg_ptr->start_position *
-            CNN_FRAME_SIZE) + ss_session->buf_start;
-        ss_session->kw_end_idx = (result_cfg_ptr->end_position *
-            CNN_FRAME_SIZE) + ss_session->buf_start;
+        ss_session->kw_start_idx = ss_session->buf_start +
+            (result_cfg_ptr->start_position > 0 ?
+            (uint32_t)((int64_t)result_cfg_ptr->start_position * CNN_FRAME_SIZE) : 0U);
+        ss_session->kw_end_idx = ss_session->buf_start +
+            (result_cfg_ptr->end_position > 0 ?
+            (uint32_t)((int64_t)result_cfg_ptr->end_position * CNN_FRAME_SIZE) : 0U);
     }
     ss_session->confidence_score = result_cfg_ptr->best_confidence;
 
